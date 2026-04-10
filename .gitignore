@@ -1,0 +1,45 @@
+# ===== Dependencies =====
+node_modules/
+.pnp
+.pnp.js
+
+# ===== Build output =====
+client/dist/
+client/dist-ssr/
+*.local
+
+# ===== Server runtime data (sensitive / machine-specific) =====
+# SSH host private key — never commit
+server/host-keys/
+
+# User database — contains bcrypt password hashes
+server/data/users.json
+
+# Runtime logs
+server/logs/
+
+# User uploaded files — usually large, machine-specific
+server/sftp-root/
+
+# ===== Environment variables (contains secrets) =====
+server/.env
+# Keep the example template
+!server/.env.example
+
+# ===== OS / Editor =====
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ===== Misc =====
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
