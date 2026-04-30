@@ -6,6 +6,7 @@ node_modules/
 # ===== Build output =====
 client/dist/
 client/dist-ssr/
+dist-electron/
 *.local
 
 # ===== Server runtime data (sensitive / machine-specific) =====
@@ -37,6 +38,8 @@ desktop.ini
 *.njsproj
 *.sln
 *.sw?
+.npmrc
+.npmrc.local
 
 # ===== Misc =====
 *.log
