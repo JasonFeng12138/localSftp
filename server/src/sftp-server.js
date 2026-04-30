@@ -20,7 +20,7 @@ class SftpServer {
     this.port = options.port || 2222;
     this.host = options.host || '0.0.0.0';
     this.connections = new Set();
-    this.hostKeyPath = path.join(__dirname, '..', 'host-keys');
+    this.hostKeyPath = process.env.HOST_KEYS_DIR || path.join(__dirname, '..', 'host-keys');
   }
 
   _ensureHostKey() {

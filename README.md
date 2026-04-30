@@ -2,6 +2,8 @@
 
 基于局域网的 SFTP 文件传输工具，包含 SFTP 协议服务端、REST API 和 Vue 3 Web 管理客户端。
 
+> **打包为 macOS App**：见 [docs/build-mac.md](docs/build-mac.md)
+
 ## 架构
 
 ```

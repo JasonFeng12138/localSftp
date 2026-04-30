@@ -29,6 +29,80 @@ function createWebServer(userManager, fileService, sftpServer) {
     app.use(express.static(clientDist));
   }
 
+  // ===================== Setup (首次初始化，无需认证) =====================
+
+  // 检查是否需要初始化（无任何用户时返回 needSetup: true）
+  app.get('/api/setup/status', (req, res) => {
+    res.json({ needSetup: userManager.users.length === 0 });
+  });
+
+  // 完成初始化：创建管理员 + 设置存储目录
+  app.post('/api/setup/complete', async (req, res) => {
+    if (userManager.users.length > 0) {
+      return res.status(403).json({ error: '已初始化，禁止重复操作' });
+    }
+    const { username, password, sftpRoot: newRoot } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: '用户名和密码不能为空' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: '密码至少 6 位' });
+    }
+    // 设置存储路径
+    if (newRoot && typeof newRoot === 'string') {
+      const resolved = path.resolve(newRoot);
+      const forbidden = ['/', '/etc', '/usr', '/bin', '/sbin', '/System'];
+      if (!forbidden.includes(resolved)) {
+        try {
+          if (!fs.existsSync(resolved)) fs.mkdirSync(resolved, { recursive: true });
+          fs.accessSync(resolved, fs.constants.R_OK | fs.constants.W_OK);
+          fileService.rootDir = resolved;
+          const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+          const settingsFile = path.join(dataDir, 'settings.json');
+          let existing = {};
+          if (fs.existsSync(settingsFile)) {
+            try { existing = JSON.parse(fs.readFileSync(settingsFile, 'utf-8')); } catch {}
+          }
+          fs.writeFileSync(settingsFile, JSON.stringify({ ...existing, sftpRoot: resolved }, null, 2));
+        } catch (err) {
+          return res.status(400).json({ error: `存储目录设置失败: ${err.message}` });
+        }
+      }
+    }
+    try {
+      await userManager.createUser({
+        username,
+        password,
+        role: 'admin',
+        homeDir: '/',
+        permissions: ['read', 'write', 'delete', 'admin']
+      });
+      logger.info(`Setup complete. Admin user "${username}" created.`);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // 列出用户家目录下的子文件夹（供存储路径选择器使用，无需登录）
+  app.get('/api/setup/dirs', (req, res) => {
+    const base = req.query.path || os.homedir();
+    const resolved = path.resolve(base);
+    // 只允许浏览用户家目录范围内
+    if (!resolved.startsWith(os.homedir()) && resolved !== os.homedir()) {
+      return res.status(403).json({ error: '只能浏览用户目录' });
+    }
+    try {
+      const entries = fs.readdirSync(resolved, { withFileTypes: true });
+      const dirs = entries
+        .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+        .map(e => ({ name: e.name, path: path.join(resolved, e.name) }));
+      res.json({ current: resolved, dirs });
+    } catch {
+      res.json({ current: resolved, dirs: [] });
+    }
+  });
+
   // ===================== Auth =====================
 
   app.post('/api/auth/login', async (req, res) => {
@@ -195,8 +269,64 @@ function createWebServer(userManager, fileService, sftpServer) {
       platform: os.platform(),
       hostname: os.hostname(),
       networkInterfaces: ips,
-      memoryUsage: process.memoryUsage().rss
+      memoryUsage: process.memoryUsage().rss,
+      sftpRoot: fileService.rootDir
     });
+  });
+
+  // ===================== Settings =====================
+
+  app.put('/api/settings', authMiddleware, adminMiddleware, async (req, res) => {
+    const { sftpRoot: newRoot } = req.body;
+    if (!newRoot || typeof newRoot !== 'string') {
+      return res.status(400).json({ error: '路径不能为空' });
+    }
+    const resolved = path.resolve(newRoot);
+    // 路径安全检查：不允许系统关键目录
+    const forbidden = ['/', '/etc', '/usr', '/bin', '/sbin', '/System', '/Library/System'];
+    if (forbidden.includes(resolved)) {
+      return res.status(400).json({ error: '不允许使用该系统目录' });
+    }
+    try {
+      if (!fs.existsSync(resolved)) {
+        fs.mkdirSync(resolved, { recursive: true });
+      }
+      // 验证可读写
+      fs.accessSync(resolved, fs.constants.R_OK | fs.constants.W_OK);
+      // 更新 fileService（SftpServer 共享同一实例，自动生效）
+      fileService.rootDir = resolved;
+      // 持久化到 settings.json
+      const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+      const settingsFile = path.join(dataDir, 'settings.json');
+      let existing = {};
+      if (fs.existsSync(settingsFile)) {
+        try { existing = JSON.parse(fs.readFileSync(settingsFile, 'utf-8')); } catch {}
+      }
+      fs.writeFileSync(settingsFile, JSON.stringify({ ...existing, sftpRoot: resolved }, null, 2));
+      logger.info(`SFTP root changed to: ${resolved}`);
+      res.json({ sftpRoot: resolved });
+    } catch (err) {
+      logger.error(`Settings update error: ${err.message}`);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // 列出目录子文件夹（已登录，供修改路径时使用）
+  app.get('/api/settings/dirs', authMiddleware, adminMiddleware, (req, res) => {
+    const base = req.query.path || os.homedir();
+    const resolved = path.resolve(base);
+    if (!resolved.startsWith(os.homedir()) && resolved !== os.homedir()) {
+      return res.status(403).json({ error: '只能浏览用户目录' });
+    }
+    try {
+      const entries = fs.readdirSync(resolved, { withFileTypes: true });
+      const dirs = entries
+        .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+        .map(e => ({ name: e.name, path: path.join(resolved, e.name) }));
+      res.json({ current: resolved, dirs });
+    } catch {
+      res.json({ current: resolved, dirs: [] });
+    }
   });
 
   // SPA fallback — serve client index.html for non-api routes

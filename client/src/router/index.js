@@ -1,7 +1,13 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
+import api from '../api/index.js'
 
 const routes = [
+  {
+    path: '/setup',
+    name: 'Setup',
+    component: () => import('../views/Setup.vue')
+  },
   {
     path: '/login',
     name: 'Login',
@@ -24,8 +30,22 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
+
+  // 已在 setup 页，不再检查
+  if (to.name === 'Setup') return
+
+  // 检查是否需要初始化（只在非 setup 页面检查一次）
+  try {
+    const res = await api.get('/setup/status')
+    if (res.data.needSetup) {
+      return { name: 'Setup' }
+    }
+  } catch {
+    // 服务端未就绪时忽略，不跳转
+  }
+
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return { name: 'Login' }
   }

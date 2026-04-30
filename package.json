@@ -1,0 +1,84 @@
+{
+  "name": "local-sftp",
+  "version": "1.0.0",
+  "description": "局域网 SFTP 文件传输工具",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:client": "cd client && npm install && npm run build",
+    "build:server-deps": "cd server && npm install --omit=dev",
+    "dist:mac": "npm run build:client && electron-builder --mac",
+    "dist:mac-arm64": "npm run build:client && electron-builder --mac --arm64",
+    "dist:mac-x64": "npm run build:client && electron-builder --mac --x64"
+  },
+  "build": {
+    "appId": "com.localsftp.app",
+    "productName": "Local SFTP",
+    "copyright": "Copyright © 2025",
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "build"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/ssh2/**",
+      "node_modules/cpu-features/**",
+      "node_modules/nan/**"
+    ],
+    "files": [
+      "electron/**",
+      "server/src/**",
+      "server/data/**",
+      "!server/data/users.json",
+      "!server/.env",
+      "server/package.json",
+      "client/dist/**",
+      "!server/node_modules/**",
+      "!server/logs/**",
+      "!server/sftp-root/**",
+      "!server/host-keys/**",
+      "!server/.env",
+      "!client/node_modules/**",
+      "!client/src/**",
+      "!**/node_modules/.cache/**",
+      "!**/node_modules/.bin/**"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "build/icon.icns",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["universal"]
+        },
+        {
+          "target": "zip",
+          "arch": ["universal"]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "Local SFTP ${version}",
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    }
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.1",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "ssh2": "^1.16.0",
+    "winston": "^3.14.2"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}
