@@ -4,6 +4,18 @@ export function getStatus() {
   return api.get('/status')
 }
 
+export function getConnections() {
+  return api.get('/connections')
+}
+
+export function kickConnection(connId) {
+  return api.delete(`/connections/${encodeURIComponent(connId)}`)
+}
+
+export function kickWebSession(sessionKey) {
+  return api.delete(`/connections/web/${encodeURIComponent(sessionKey)}`)
+}
+
 export function updateSettings(data) {
   return api.put('/settings', data)
 }

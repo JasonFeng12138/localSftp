@@ -50,9 +50,14 @@ startServer().catch(err => {
 });
 
 // ── 3. 等待 Web 端口就绪 ─────────────────────────────────────────────────────
-function waitForPort(port) {
-  return new Promise(resolve => {
+function waitForPort(port, maxWaitMs = 30000) {
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now();
     const tryConnect = () => {
+      if (Date.now() - startTime > maxWaitMs) {
+        reject(new Error(`端口 ${port} 在 ${maxWaitMs / 1000} 秒内未就绪，服务可能启动失败`));
+        return;
+      }
       const socket = new net.Socket();
       socket.setTimeout(500);
       socket
@@ -171,29 +176,45 @@ function createTray() {
 }
 
 // ── 6. App 生命周期 ──────────────────────────────────────────────────────────
-app.whenReady().then(() => {
-  createWindow();
-  createTray();
+const gotTheLock = app.requestSingleInstanceLock();
 
-  // 服务就绪后发送系统通知，告知局域网访问地址
-  const webPort = parseInt(process.env.WEB_PORT, 10) || 3000;
-  waitForPort(webPort).then(() => {
-    const lanIPs = getLanIPs();
-    if (Notification.isSupported() && lanIPs.length > 0) {
-      new Notification({
-        title: 'Local SFTP 已启动',
-        body: `局域网访问: http://${lanIPs[0]}:${webPort}`,
-      }).show();
-    }
-  });
-
-  // macOS: 点击 Dock 图标重新显示窗口
-  app.on('activate', () => {
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
     if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
+      mainWindow.focus();
     }
   });
-});
+
+  app.whenReady().then(() => {
+    createWindow();
+    createTray();
+
+    // 服务就绪后发送系统通知，告知局域网访问地址
+    const webPort = parseInt(process.env.WEB_PORT, 10) || 3000;
+    waitForPort(webPort).then(() => {
+      const lanIPs = getLanIPs();
+      if (Notification.isSupported() && lanIPs.length > 0) {
+        new Notification({
+          title: 'Local SFTP 已启动',
+          body: `局域网访问: http://${lanIPs[0]}:${webPort}`,
+        }).show();
+      }
+    }).catch(err => {
+      const { dialog } = require('electron');
+      dialog.showErrorBox('Local SFTP 启动失败', err.message + '\n\n请检查端口是否被占用，或重启应用。');
+      app.quit();
+    });
+
+    // macOS: 点击 Dock 图标重新显示窗口
+    app.on('activate', () => {
+      if (mainWindow) mainWindow.show();
+    });
+  });
+}
 
 // 所有窗口关闭时不退出（依赖托盘菜单退出）
 app.on('window-all-closed', () => {

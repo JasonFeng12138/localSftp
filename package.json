@@ -1,6 +1,6 @@
 {
   "name": "local-sftp",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "局域网 SFTP 文件传输工具",
   "main": "electron/main.js",
   "scripts": {
