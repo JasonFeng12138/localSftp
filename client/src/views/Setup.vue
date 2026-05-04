@@ -127,6 +127,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { completeSetup, getSetupDirs } from '../api/status.js'
 import api from '../api/index.js'
+import { resetSetupCheck } from '../router/index.js'
 
 const router = useRouter()
 const step = ref(0)
@@ -194,10 +195,17 @@ function enterDir(p) {
 }
 
 function goUp() {
-  const parts = currentDir.value.split('/')
-  parts.pop()
-  const parent = parts.join('/') || '/'
-  if (parent.startsWith(homeDir.value)) {
+  const sep = currentDir.value.includes('\\') && !currentDir.value.includes('/') ? '\\' : '/'
+  const trimmed = currentDir.value.replace(/[\\/]+$/, '')
+  const lastIdx = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  let parent
+  if (lastIdx < 0) {
+    parent = sep === '\\' ? trimmed : '/'
+  } else {
+    parent = trimmed.slice(0, lastIdx) || sep
+    if (/^[A-Za-z]:$/.test(parent)) parent = parent + '\\'
+  }
+  if (parent === homeDir.value || parent.startsWith(homeDir.value + '/') || parent.startsWith(homeDir.value + '\\')) {
     loadDirs(parent)
   }
 }
@@ -206,19 +214,35 @@ function useCurrentDir() {
   form.value.sftpRoot = currentDir.value
 }
 
+function getPathSeparator(dir) {
+  return dir.includes('\\') && !dir.includes('/') ? '\\' : '/'
+}
+
+function joinChildPath(parent, child) {
+  const separator = getPathSeparator(parent)
+  const trailingSeparators = separator === '\\' ? /[\\]+$/ : /\/+$/
+  const normalizedParent = parent.replace(trailingSeparators, '')
+  return normalizedParent ? `${normalizedParent}${separator}${child}` : child
+}
+
 async function createFolder() {
-  if (!newFolderName.value.trim()) return
-  // 验证文件夹名：不含路径分隔符
-  if (newFolderName.value.includes('/') || newFolderName.value.includes('\\')) {
+  const folderName = newFolderName.value.trim()
+  if (!folderName) return
+  // 验证文件夹名：不含路径分隔符或特殊目录名
+  if (folderName === '.' || folderName === '..') {
+    ElMessage.warning('文件夹名不能为 . 或 ..')
+    return
+  }
+  if (folderName.includes('/') || folderName.includes('\\')) {
     ElMessage.warning('文件夹名不能包含 / 或 \\')
     return
   }
-  const newPath = currentDir.value.replace(/\/$/, '') + '/' + newFolderName.value.trim()
+  const newPath = joinChildPath(currentDir.value, folderName)
   // 本地先记录选中（服务端 completeSetup 时会自动 mkdir）
   newFolderMode.value = false
   newFolderName.value = ''
   // 把新路径追加到列表中显示
-  dirs.value.push({ name: newPath.split('/').pop(), path: newPath })
+  dirs.value.push({ name: folderName, path: newPath })
   form.value.sftpRoot = newPath
   ElMessage.success('已选中，初始化完成后将自动创建此文件夹')
 }
@@ -249,6 +273,8 @@ async function doSetup() {
       password: form.value.password,
       sftpRoot: form.value.sftpRoot
     })
+    // setup 完成，重置路由守卫缓存，下次导航会重新检查
+    resetSetupCheck()
   } catch (err) {
     setupError.value = err.response?.data?.error || '初始化失败，请重试'
   } finally {

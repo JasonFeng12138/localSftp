@@ -15,6 +15,10 @@
           <el-icon><Monitor /></el-icon>
           <span>系统状态</span>
         </el-menu-item>
+        <el-menu-item index="/connect" v-if="auth.isAdmin">
+          <el-icon><Connection /></el-icon>
+          <span>快速连接</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -38,7 +42,7 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
-import { FolderOpened, UserFilled, Monitor, SwitchButton } from '@element-plus/icons-vue'
+import { FolderOpened, UserFilled, Monitor, SwitchButton, Connection } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()

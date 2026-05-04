@@ -19,7 +19,7 @@ class SftpServer {
     this.fileService = fileService;
     this.port = options.port || 2222;
     this.host = options.host || '0.0.0.0';
-    this.connections = new Set();
+    this.connections = new Map();
     this.hostKeyPath = process.env.HOST_KEYS_DIR || path.join(__dirname, '..', 'host-keys');
   }
 
@@ -47,8 +47,17 @@ class SftpServer {
     this.server = new Server({ hostKeys: [hostKey] }, (client) => {
       let authedUser = null;
       const connId = `conn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      this.connections.add(connId);
-      logger.info(`[${connId}] New SSH connection`);
+      // 获取并规范化客户端 IP（处理 ::ffff: IPv6 映射形式）
+      const rawIp = client._sock?.remoteAddress || 'unknown';
+      const clientIp = rawIp.startsWith('::ffff:') ? rawIp.slice(7) : rawIp;
+      this.connections.set(connId, {
+        connId,
+        ip: clientIp,
+        username: null,
+        connectedAt: new Date().toISOString(),
+        _client: client   // 内部引用，用于踢出连接
+      });
+      logger.info(`[${connId}] New SSH connection from ${clientIp}`);
 
       client.on('authentication', (ctx) => {
         if (ctx.method === 'password') {
@@ -56,6 +65,9 @@ class SftpServer {
             .then(user => {
               if (user) {
                 authedUser = { ...user, homeDir: user.homeDir || '/' };
+                // 更新连接记录中的用户名
+                const conn = this.connections.get(connId);
+                if (conn) conn.username = ctx.username;
                 logger.info(`[${connId}] User "${ctx.username}" authenticated`);
                 ctx.accept();
               } else {
@@ -353,6 +365,22 @@ class SftpServer {
 
   getConnectionCount() {
     return this.connections.size;
+  }
+
+  getConnections() {
+    // 返回时过滤掉内部 _client 引用，不暴露给外部
+    return Array.from(this.connections.values()).map(({ _client, ...rest }) => rest);
+  }
+
+  kickConnection(connId) {
+    const conn = this.connections.get(connId);
+    if (!conn) return false;
+    try {
+      conn._client.end();
+    } catch {}
+    this.connections.delete(connId);
+    logger.info(`[${connId}] Connection kicked by admin`);
+    return true;
   }
 
   stop() {

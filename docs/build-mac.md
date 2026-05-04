@@ -46,7 +46,13 @@ bash scripts/build-mac.sh --x64
 
 ## 网络问题（中国大陆）
 
-项目根目录的 `.npmrc` 中已配置淘宝镜像。如果构建过程中下载 Electron 缓慢，也可手动指定：
+如果构建过程中下载 Electron 缓慢，可在项目根目录手动创建 `.npmrc` 文件并配置淘宝镜像：
+
+```ini
+electron_mirror=https://npmmirror.com/mirrors/electron/
+```
+
+也可直接通过环境变量临时指定：
 
 ```bash
 ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" bash scripts/build-mac.sh

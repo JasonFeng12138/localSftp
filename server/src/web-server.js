@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const { generateToken, authMiddleware, adminMiddleware, requirePermission } = require('./auth');
+const { generateToken, authMiddleware, adminMiddleware, requirePermission, revokeSession } = require('./auth');
 const logger = require('./logger');
 
 function createWebServer(userManager, fileService, sftpServer) {
@@ -19,6 +19,26 @@ function createWebServer(userManager, fileService, sftpServer) {
 
   app.use(cors({ origin: true, credentials: true }));
   app.use(express.json());
+
+  // Track active web sessions (authenticated browser users)
+  const webSessions = new Map(); // key: `${username}@${ip}`
+  app.use((req, res, next) => {
+    res.on('finish', () => {
+      if (req.user && res.statusCode < 400) {
+        const clientIp = (req.ip || '').replace(/^::ffff:/, '') || 'unknown';
+        const key = `${req.user.username}@${clientIp}`;
+        webSessions.set(key, {
+          sessionKey: key,
+          username: req.user.username,
+          role: req.user.role,
+          ip: clientIp,
+          lastSeen: new Date().toISOString(),
+          userAgent: req.headers['user-agent'] || ''
+        });
+      }
+    });
+    next();
+  });
 
   // Multer: store to temp dir, then move via FileService
   const upload = multer({ dest: path.join(os.tmpdir(), 'sftp-uploads') });
@@ -52,21 +72,22 @@ function createWebServer(userManager, fileService, sftpServer) {
     if (newRoot && typeof newRoot === 'string') {
       const resolved = path.resolve(newRoot);
       const forbidden = ['/', '/etc', '/usr', '/bin', '/sbin', '/System'];
-      if (!forbidden.includes(resolved)) {
-        try {
-          if (!fs.existsSync(resolved)) fs.mkdirSync(resolved, { recursive: true });
-          fs.accessSync(resolved, fs.constants.R_OK | fs.constants.W_OK);
-          fileService.rootDir = resolved;
-          const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
-          const settingsFile = path.join(dataDir, 'settings.json');
-          let existing = {};
-          if (fs.existsSync(settingsFile)) {
-            try { existing = JSON.parse(fs.readFileSync(settingsFile, 'utf-8')); } catch {}
-          }
-          fs.writeFileSync(settingsFile, JSON.stringify({ ...existing, sftpRoot: resolved }, null, 2));
-        } catch (err) {
-          return res.status(400).json({ error: `存储目录设置失败: ${err.message}` });
+      if (forbidden.includes(resolved)) {
+        return res.status(400).json({ error: '不允许使用该系统目录' });
+      }
+      try {
+        if (!fs.existsSync(resolved)) fs.mkdirSync(resolved, { recursive: true });
+        fs.accessSync(resolved, fs.constants.R_OK | fs.constants.W_OK);
+        fileService.rootDir = resolved;
+        const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+        const settingsFile = path.join(dataDir, 'settings.json');
+        let existing = {};
+        if (fs.existsSync(settingsFile)) {
+          try { existing = JSON.parse(fs.readFileSync(settingsFile, 'utf-8')); } catch {}
         }
+        fs.writeFileSync(settingsFile, JSON.stringify({ ...existing, sftpRoot: resolved }, null, 2));
+      } catch (err) {
+        return res.status(400).json({ error: `存储目录设置失败: ${err.message}` });
       }
     }
     try {
@@ -86,10 +107,16 @@ function createWebServer(userManager, fileService, sftpServer) {
 
   // 列出用户家目录下的子文件夹（供存储路径选择器使用，无需登录）
   app.get('/api/setup/dirs', (req, res) => {
-    const base = req.query.path || os.homedir();
+    // 已初始化后禁止访问
+    if (userManager.users.length > 0) {
+      return res.status(403).json({ error: '已初始化，禁止访问' });
+    }
+    const home = path.resolve(os.homedir());
+    const base = req.query.path || home;
     const resolved = path.resolve(base);
+    const relative = path.relative(home, resolved);
     // 只允许浏览用户家目录范围内
-    if (!resolved.startsWith(os.homedir()) && resolved !== os.homedir()) {
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
       return res.status(403).json({ error: '只能浏览用户目录' });
     }
     try {
@@ -274,6 +301,52 @@ function createWebServer(userManager, fileService, sftpServer) {
     });
   });
 
+  // 快速连接信息：局域网地址 + 当前 SFTP 连接详情（仅管理员）
+  app.get('/api/connections', authMiddleware, adminMiddleware, (req, res) => {
+    const interfaces = os.networkInterfaces();
+    const lanAddresses = [];
+    for (const addrs of Object.values(interfaces)) {
+      for (const addr of addrs) {
+        if (addr.family === 'IPv4' && !addr.internal) {
+          lanAddresses.push(addr.address);
+        }
+      }
+    }
+    const webPort = process.env.WEB_PORT || 3000;
+    // Filter web sessions active within last 10 minutes
+    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+    const activeWebSessions = Array.from(webSessions.values())
+      .filter(s => new Date(s.lastSeen).getTime() > tenMinutesAgo);
+    res.json({
+      webPort,
+      sftpPort: sftpServer.port,
+      lanAddresses,
+      sftpConnections: sftpServer.getConnections(),
+      webSessions: activeWebSessions
+    });
+  });
+
+  // 踢出 Web 会话（仅管理员）—— 必须在 /:connId 之前注册，否则 Express 会把 "web" 当作 connId
+  app.delete('/api/connections/web/:sessionKey', authMiddleware, adminMiddleware, (req, res) => {
+    const sessionKey = decodeURIComponent(req.params.sessionKey);
+    if (!webSessions.has(sessionKey)) {
+      return res.status(404).json({ error: '会话不存在' });
+    }
+    revokeSession(sessionKey);
+    webSessions.delete(sessionKey);
+    logger.info(`Admin "${req.user.username}" revoked web session ${sessionKey}`);
+    res.json({ ok: true });
+  });
+
+  // 踢出 SFTP 连接（仅管理员）
+  app.delete('/api/connections/:connId', authMiddleware, adminMiddleware, (req, res) => {
+    const { connId } = req.params;
+    const ok = sftpServer.kickConnection(connId);
+    if (!ok) return res.status(404).json({ error: '连接不存在' });
+    logger.info(`Admin "${req.user.username}" kicked SFTP connection ${connId}`);
+    res.json({ ok: true });
+  });
+
   // ===================== Settings =====================
 
   app.put('/api/settings', authMiddleware, adminMiddleware, async (req, res) => {
@@ -313,9 +386,12 @@ function createWebServer(userManager, fileService, sftpServer) {
 
   // 列出目录子文件夹（已登录，供修改路径时使用）
   app.get('/api/settings/dirs', authMiddleware, adminMiddleware, (req, res) => {
-    const base = req.query.path || os.homedir();
+    const home = path.resolve(os.homedir());
+    const base = req.query.path || home;
     const resolved = path.resolve(base);
-    if (!resolved.startsWith(os.homedir()) && resolved !== os.homedir()) {
+    const relative = path.relative(home, resolved);
+    const isWithinHome = relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+    if (!isWithinHome) {
       return res.status(403).json({ error: '只能浏览用户目录' });
     }
     try {

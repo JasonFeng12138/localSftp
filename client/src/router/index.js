@@ -20,7 +20,8 @@ const routes = [
     children: [
       { path: '', name: 'FileManager', component: () => import('../views/FileManager.vue') },
       { path: 'users', name: 'UserManager', component: () => import('../views/UserManager.vue'), meta: { requiresAdmin: true } },
-      { path: 'status', name: 'ServerStatus', component: () => import('../views/ServerStatus.vue') }
+      { path: 'status', name: 'ServerStatus', component: () => import('../views/ServerStatus.vue') },
+      { path: 'connect', name: 'QuickConnect', component: () => import('../views/QuickConnect.vue'), meta: { requiresAdmin: true } }
     ]
   }
 ]
@@ -30,20 +31,27 @@ const router = createRouter({
   routes
 })
 
+// 缓存 setup 状态，只在应用启动时请求一次，避免每次路由跳转都发请求
+let setupChecked = false
+let needSetup = false
+
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
 
   // 已在 setup 页，不再检查
   if (to.name === 'Setup') return
 
-  // 检查是否需要初始化（只在非 setup 页面检查一次）
-  try {
-    const res = await api.get('/setup/status')
-    if (res.data.needSetup) {
-      return { name: 'Setup' }
+  // 只在首次检查 setup 状态
+  if (!setupChecked) {
+    try {
+      const res = await api.get('/setup/status')
+      needSetup = res.data.needSetup
+    } catch {
+      // 服务端未就绪时忽略，不跳转
     }
-  } catch {
-    // 服务端未就绪时忽略，不跳转
+    setupChecked = true
+    // setup 完成后重置状态，防止后续跳转失效
+    if (needSetup) return { name: 'Setup' }
   }
 
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
@@ -54,4 +62,8 @@ router.beforeEach(async (to) => {
   }
 })
 
+export function resetSetupCheck() {
+  setupChecked = false
+  needSetup = false
+}
 export default router

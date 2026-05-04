@@ -149,10 +149,27 @@ async function loadBrowseDirs(p) {
   }
 }
 
+function getParentDir(currentPath) {
+  if (!currentPath) return '/'
+  const isWindowsPath = currentPath.includes('\\')
+  const separator = isWindowsPath ? '\\' : '/'
+  const windowsRootMatch = currentPath.match(/^[A-Za-z]:[\\/]?$/)
+  if (currentPath === '/' || windowsRootMatch) {
+    return windowsRootMatch ? `${windowsRootMatch[0].slice(0, 2)}\\` : '/'
+  }
+  const trimmedPath = currentPath.replace(/[\\/]+$/, '')
+  const lastSeparatorIndex = Math.max(trimmedPath.lastIndexOf('/'), trimmedPath.lastIndexOf('\\'))
+  if (lastSeparatorIndex < 0) {
+    return isWindowsPath ? trimmedPath : '/'
+  }
+  const parent = trimmedPath.slice(0, lastSeparatorIndex)
+  if (!parent) return separator
+  if (/^[A-Za-z]:$/.test(parent)) return `${parent}\\`
+  return parent
+}
+
 function browseGoUp() {
-  const parts = browseCurrentDir.value.split('/')
-  parts.pop()
-  const parent = parts.join('/') || '/'
+  const parent = getParentDir(browseCurrentDir.value)
   loadBrowseDirs(parent)
 }
 
