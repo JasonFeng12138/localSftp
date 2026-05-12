@@ -79,6 +79,8 @@ function createWindow() {
     width:  1280,
     height: 820,
     title:  'Local SFTP',
+    titleBarStyle: 'hiddenInset', // 隐藏原生标题栏，红绿灯悬浮在内容上
+    backgroundColor: '#ffffff',   // 与 header 背景色一致，避免白屏闪烁
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -88,6 +90,10 @@ function createWindow() {
   const port = parseInt(process.env.WEB_PORT, 10) || 3000;
   waitForPort(port).then(() => {
     mainWindow.loadURL(`http://localhost:${port}`);
+  }).catch(err => {
+    console.error('[Electron] waitForPort failed:', err.message);
+    // 超时后仍尝试加载，避免窗口空白
+    if (mainWindow) mainWindow.loadURL(`http://localhost:${port}`);
   });
 
   // 关闭窗口时隐藏（保持后台服务运行），点 Dock 图标可重新打开
