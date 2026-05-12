@@ -6,6 +6,7 @@ const JWT_EXPIRES_IN = '24h';
 
 // sessionKey -> revokedAt (ms timestamp), for kicking web sessions
 const sessionBlacklist = new Map();
+const BLACKLIST_TTL_MS = 24 * 60 * 60 * 1000; // 与 JWT 过期时间一致（24h）
 
 function generateToken(user) {
   return jwt.sign(
@@ -41,6 +42,11 @@ function authMiddleware(req, res, next) {
     const revokedAt = sessionBlacklist.get(sessionKey);
     if (revokedAt && req.user.iat * 1000 < revokedAt) {
       return res.status(401).json({ error: 'Session has been revoked' });
+    }
+    // 惰性清理过期黑名单条目（超过 JWT 最大生命周期的无需保留）
+    const now = Date.now();
+    for (const [k, ts] of sessionBlacklist) {
+      if (now - ts > BLACKLIST_TTL_MS) sessionBlacklist.delete(k);
     }
     next();
   } catch (err) {

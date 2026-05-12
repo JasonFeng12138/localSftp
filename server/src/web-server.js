@@ -21,20 +21,28 @@ function createWebServer(userManager, fileService, sftpServer) {
   app.use(express.json());
 
   // Track active web sessions (authenticated browser users)
+  const WEB_SESSION_TTL_MS = 10 * 60 * 1000; // 10 分钟无活动后清理
   const webSessions = new Map(); // key: `${username}@${ip}`
   app.use((req, res, next) => {
     res.on('finish', () => {
       if (req.user && res.statusCode < 400) {
-        const clientIp = (req.ip || '').replace(/^::ffff:/, '') || 'unknown';
+        const clientIp = (req.ip || '').replace(/^::ffff:/, '');
         const key = `${req.user.username}@${clientIp}`;
+        const now = Date.now();
         webSessions.set(key, {
           sessionKey: key,
           username: req.user.username,
           role: req.user.role,
           ip: clientIp,
-          lastSeen: new Date().toISOString(),
+          lastSeen: new Date(now).toISOString(),
           userAgent: req.headers['user-agent'] || ''
         });
+        // 惰性清理过期会话
+        for (const [k, v] of webSessions) {
+          if (now - new Date(v.lastSeen).getTime() > WEB_SESSION_TTL_MS) {
+            webSessions.delete(k);
+          }
+        }
       }
     });
     next();

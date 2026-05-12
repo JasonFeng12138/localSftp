@@ -71,6 +71,10 @@ function handleLogout() {
   font-size: 18px;
   font-weight: 700;
   background: #263445;
+  /* 为 macOS hiddenInset 红绿灯腾出垂直空间 */
+  padding-top: 28px;
+  height: 88px;
+  -webkit-app-region: drag;
 }
 .sidebar .el-menu {
   border-right: none;
@@ -90,10 +94,13 @@ function handleLogout() {
   justify-content: space-between;
   border-bottom: 1px solid #ebeef5;
   background: #fff;
+  -webkit-app-region: drag;
 }
 .header-right {
   display: flex;
   align-items: center;
   gap: 12px;
+  /* 按钮区域禁止拖拽，保证点击事件正常 */
+  -webkit-app-region: no-drag;
 }
 </style>

@@ -46,11 +46,10 @@ router.beforeEach(async (to) => {
     try {
       const res = await api.get('/setup/status')
       needSetup = res.data.needSetup
+      setupChecked = true
     } catch {
-      // 服务端未就绪时忽略，不跳转
+      // 服务端未就绪时忽略，不跳转，下次导航重试
     }
-    setupChecked = true
-    // setup 完成后重置状态，防止后续跳转失效
     if (needSetup) return { name: 'Setup' }
   }
 
