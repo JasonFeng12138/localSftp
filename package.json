@@ -1,15 +1,15 @@
 {
   "name": "local-sftp",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "局域网 SFTP 文件传输工具",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
     "build:client": "cd client && npm install && npm run build",
     "build:server-deps": "cd server && npm install --omit=dev",
-    "dist:mac": "npm run build:client && electron-builder --mac",
-    "dist:mac-arm64": "npm run build:client && electron-builder --mac --arm64",
-    "dist:mac-x64": "npm run build:client && electron-builder --mac --x64"
+    "dist:mac": "npm run build:client && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
+    "dist:mac-arm64": "npm run build:client && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64",
+    "dist:mac-x64": "npm run build:client && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --x64"
   },
   "build": {
     "appId": "com.localsftp.app",

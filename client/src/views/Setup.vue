@@ -301,17 +301,19 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: transparent;
   padding: 24px;
 }
 
 .setup-card {
-  background: #fff;
-  border-radius: 12px;
+  background: var(--glass-bg-strong);
+  border-radius: 18px;
   padding: 40px;
   width: 100%;
   max-width: 560px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur));
 }
 
 .setup-header {
@@ -327,7 +329,7 @@ onMounted(async () => {
 .setup-header h2 {
   margin: 0 0 8px;
   font-size: 24px;
-  color: #1a1a2e;
+  color: #0f172a;
 }
 
 .setup-subtitle {
@@ -343,8 +345,8 @@ onMounted(async () => {
 }
 
 .dir-picker {
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
   overflow: hidden;
 }
 
@@ -353,8 +355,8 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: #f5f7fa;
-  border-bottom: 1px solid #e4e7ed;
+  background: rgba(255, 255, 255, 0.7);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
   font-size: 13px;
 }
 

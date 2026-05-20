@@ -1,6 +1,6 @@
 <template>
   <el-container class="layout">
-    <el-aside width="200px" class="sidebar">
+    <el-aside width="210px" class="sidebar">
       <div class="logo">SFTP 管理</div>
       <el-menu :default-active="route.path" router>
         <el-menu-item index="/">
@@ -32,7 +32,7 @@
           </el-button>
         </div>
       </el-header>
-      <el-main>
+      <el-main class="main">
         <router-view />
       </el-main>
     </el-container>
@@ -59,48 +59,58 @@ function handleLogout() {
   height: 100vh;
 }
 .sidebar {
-  background: #304156;
+  background: rgba(18, 26, 48, 0.88);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 .logo {
-  height: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 18px;
+  color: #e2e8f0;
+  font-size: 19px;
   font-weight: 700;
-  background: #263445;
+  background: rgba(10, 16, 32, 0.45);
   /* 为 macOS hiddenInset 红绿灯腾出垂直空间 */
   padding-top: 28px;
-  height: 88px;
+  height: 92px;
   -webkit-app-region: drag;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 .sidebar .el-menu {
   border-right: none;
-  background: #304156;
+  background: transparent;
+  padding: 8px 0;
 }
 .sidebar .el-menu-item {
-  color: #bfcbd9;
+  color: rgba(203, 213, 225, 0.85);
+  margin: 3px 10px;
+  border-radius: 9px;
 }
 .sidebar .el-menu-item:hover,
 .sidebar .el-menu-item.is-active {
-  background: #263445;
-  color: #409eff;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
 }
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid #ebeef5;
-  background: #fff;
+  justify-content: flex-end;
+  padding: 0 20px;
+  height: 52px;
+  background: transparent;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
   -webkit-app-region: drag;
 }
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
-  /* 按钮区域禁止拖拽，保证点击事件正常 */
+  gap: 10px;
   -webkit-app-region: no-drag;
+}
+.main {
+  padding: 20px 24px;
+  overflow-y: auto;
 }
 </style>

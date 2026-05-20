@@ -16,7 +16,8 @@
         <span style="font-family: monospace; word-break: break-all;">{{ status.sftpRoot }}</span>
         <el-button
           v-if="auth.user?.permissions?.includes('admin')"
-          text size="small" type="primary"
+          type="primary"
+          size="small"
           style="margin-left: 12px;"
           @click="openRootDialog"
         >修改路径</el-button>
@@ -87,9 +88,12 @@
 </template>
 
 <style scoped>
+.server-status {
+  padding: 4px 0;
+}
 .dir-picker {
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
   overflow: hidden;
   margin-top: 4px;
 }
@@ -98,8 +102,8 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: #f5f7fa;
-  border-bottom: 1px solid #e4e7ed;
+  background: rgba(255, 255, 255, 0.7);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
   font-size: 12px;
 }
 .dir-label { color: #909399; white-space: nowrap; }
@@ -108,12 +112,12 @@
 .dir-item {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 12px; cursor: pointer;
-  border-bottom: 1px solid #f0f0f0; font-size: 13px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2); font-size: 13px;
 }
-.dir-item:hover { background: #f5f7fa; }
-.dir-item.selected { background: #ecf5ff; }
-.dir-empty { padding: 16px; text-align: center; color: #c0c4cc; font-size: 13px; }
-.dir-actions { padding: 6px 12px; background: #fafafa; border-top: 1px solid #e4e7ed; }
+.dir-item:hover { background: rgba(59, 130, 246, 0.08); }
+.dir-item.selected { background: rgba(59, 130, 246, 0.14); }
+.dir-empty { padding: 16px; text-align: center; color: #94a3b8; font-size: 13px; }
+.dir-actions { padding: 6px 12px; background: rgba(255, 255, 255, 0.7); border-top: 1px solid rgba(148, 163, 184, 0.35); }
 </style>
 
 <script setup>

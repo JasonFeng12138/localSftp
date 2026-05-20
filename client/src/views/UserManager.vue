@@ -17,7 +17,9 @@
       <el-table-column prop="homeDir" label="主目录" min-width="120" />
       <el-table-column label="权限" min-width="200">
         <template #default="{ row }">
-          <el-tag v-for="p in row.permissions" :key="p" size="small" style="margin-right: 4px;">{{ p }}</el-tag>
+          <div class="perm-tags">
+            <el-tag v-for="p in row.permissions" :key="p" size="small">{{ p }}</el-tag>
+          </div>
         </template>
       </el-table-column>
       <el-table-column label="状态" width="80">
@@ -28,17 +30,17 @@
       <el-table-column prop="createdAt" label="创建时间" width="180">
         <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="170" fixed="right">
         <template #default="{ row }">
-          <el-button text size="small" @click="openEdit(row)">编辑</el-button>
-          <el-button text size="small" :type="row.enabled ? 'warning' : 'success'" @click="toggleEnabled(row)">
-            {{ row.enabled ? '禁用' : '启用' }}
-          </el-button>
-          <el-popconfirm title="确认删除该用户？" @confirm="handleDelete(row.username)">
-            <template #reference>
-              <el-button text size="small" type="danger">删除</el-button>
-            </template>
-          </el-popconfirm>
+          <div class="action-row">
+            <el-button text size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button text size="small" :type="row.enabled ? 'warning' : 'success'" @click="toggleEnabled(row)">{{ row.enabled ? '禁用' : '启用' }}</el-button>
+            <el-popconfirm title="确认删除该用户？" @confirm="handleDelete(row.username)">
+              <template #reference>
+                <el-button text size="small" type="danger">删除</el-button>
+              </template>
+            </el-popconfirm>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -330,11 +332,29 @@ async function handleDelete(username) {
 </script>
 
 <style scoped>
+.user-manager {
+  padding: 4px 0;
+}
+.perm-tags {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow: visible;
+}
+.action-row {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
+}
+.toolbar h3 {
+  font-size: 18px;
+  color: #0f172a;
 }
 .dir-input-row {
   display: flex;
@@ -348,11 +368,12 @@ async function handleDelete(username) {
 /* Dir Picker */
 .picker-breadcrumb {
   font-size: 13px;
-  color: #606266;
+  color: #475569;
   margin-bottom: 10px;
   padding: 6px 10px;
-  background: #f5f7fa;
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
 }
 .picker-seg {
   cursor: pointer;
@@ -365,8 +386,9 @@ async function handleDelete(username) {
   min-height: 200px;
   max-height: 300px;
   overflow-y: auto;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
 }
 .picker-item {
   display: flex;
@@ -378,10 +400,10 @@ async function handleDelete(username) {
   position: relative;
 }
 .picker-item:hover {
-  background: #f0f7ff;
+  background: rgba(59, 130, 246, 0.08);
 }
 .picker-selected {
-  background: #ecf5ff;
+  background: rgba(59, 130, 246, 0.14);
 }
 .picker-up {
   color: #909399;
@@ -396,13 +418,13 @@ async function handleDelete(username) {
 }
 .picker-empty {
   text-align: center;
-  color: #c0c4cc;
+  color: #94a3b8;
   padding: 40px 0;
   font-size: 13px;
 }
 .picker-current {
   margin-top: 10px;
   font-size: 13px;
-  color: #606266;
+  color: #475569;
 }
 </style>

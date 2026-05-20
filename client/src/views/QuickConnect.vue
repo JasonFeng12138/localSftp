@@ -9,62 +9,33 @@
     </div>
 
     <!-- 局域网访问地址 -->
-    <el-card class="section-card" v-loading="loading">
-      <template #header>
-        <span class="card-title"><el-icon><Monitor /></el-icon> 局域网访问地址</span>
-      </template>
-
+    <div class="section-block" v-loading="loading">
+      <div class="section-title"><el-icon><Monitor /></el-icon> 局域网访问地址</div>
       <div v-if="data.lanAddresses?.length" class="address-grid">
-        <div
-          v-for="ip in data.lanAddresses"
-          :key="ip"
-          class="address-item"
-        >
-          <!-- 二维码 -->
+        <div v-for="ip in data.lanAddresses" :key="ip" class="address-item">
+          <div class="addr-url">http://{{ ip }}:{{ data.webPort }}</div>
           <div class="qr-wrap">
-            <img
-              v-if="qrMap[ip]"
-              :src="qrMap[ip]"
-              class="qr-img"
-              :alt="`QR: http://${ip}:${data.webPort}`"
-            />
+            <img v-if="qrMap[ip]" :src="qrMap[ip]" class="qr-img" :alt="`QR: http://${ip}:${data.webPort}`" />
             <div v-else class="qr-placeholder"><el-icon><Loading /></el-icon></div>
           </div>
-
-          <!-- 地址信息 -->
-          <div class="addr-info">
-            <div class="addr-url">http://{{ ip }}:{{ data.webPort }}</div>
-            <div class="addr-tip">手机扫码或在浏览器中打开</div>
-            <div class="addr-actions">
-              <el-button size="small" @click="copyUrl(`http://${ip}:${data.webPort}`)">
-                <el-icon><CopyDocument /></el-icon> 复制地址
-              </el-button>
-            </div>
-          </div>
+          <el-button size="small" @click="copyUrl(`http://${ip}:${data.webPort}`)">
+            <el-icon><CopyDocument /></el-icon> 复制地址
+          </el-button>
         </div>
       </div>
-
       <el-empty v-else description="未检测到局域网 IP" />
-    </el-card>
+    </div>
 
-    <!-- 当前 Web 登录设备 -->
-    <el-card class="section-card">
-      <template #header>
-        <div style="display:flex; align-items:center; justify-content:space-between;">
-          <span class="card-title">
-            <el-icon><Monitor /></el-icon> 当前 Web 登录设备
-          </span>
-          <el-tag :type="data.webSessions?.length ? 'success' : 'info'">
-            {{ data.webSessions?.length || 0 }} 个在线
-          </el-tag>
-        </div>
-      </template>
-
-      <el-table
-        :data="data.webSessions || []"
-        style="width: 100%"
-        empty-text="暂无 Web 登录设备（10 分钟内有操作记录才会显示）"
-      >
+    <!-- 设备在线情况：两个小节合并在一个容器里 -->
+    <div class="section-block">
+      <!-- Web 登录设备 -->
+      <div class="subsection-header">
+        <span class="section-title"><el-icon><Monitor /></el-icon> 当前 Web 登录设备</span>
+        <el-tag :type="data.webSessions?.length ? 'success' : 'info'" size="small">
+          {{ data.webSessions?.length || 0 }} 个在线
+        </el-tag>
+      </div>
+      <el-table :data="data.webSessions || []" style="width:100%" empty-text="暂无 Web 登录设备（10 分钟内有操作记录才会显示）">
         <el-table-column label="设备 IP" min-width="140">
           <template #default="{ row }">
             <el-tag type="primary" effect="plain">{{ row.ip || '未知' }}</el-tag>
@@ -72,32 +43,22 @@
         </el-table-column>
         <el-table-column label="登录账号" min-width="120">
           <template #default="{ row }">
-            <el-icon style="vertical-align: -2px;"><User /></el-icon>
+            <el-icon style="vertical-align:-2px"><User /></el-icon>
             {{ row.username }}
             <el-tag v-if="row.role === 'admin'" type="danger" size="small" style="margin-left:4px">管理员</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="最后活跃" min-width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.lastSeen) }}
-          </template>
+          <template #default="{ row }">{{ formatTime(row.lastSeen) }}</template>
         </el-table-column>
         <el-table-column label="设备信息" min-width="200">
           <template #default="{ row }">
-            <span style="font-size:12px; color:#909399; word-break:break-all;">
-              {{ parseUa(row.userAgent) }}
-            </span>
+            <span style="font-size:12px;color:#909399;">{{ parseUa(row.userAgent) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="90" fixed="right">
           <template #default="{ row }">
-            <el-popconfirm
-              title="确认踢出该设备的 Web 登录？"
-              confirm-button-text="踢出"
-              cancel-button-text="取消"
-              confirm-button-type="danger"
-              @confirm="kickWeb(row.sessionKey)"
-            >
+            <el-popconfirm title="确认踢出该设备的 Web 登录？" confirm-button-text="踢出" cancel-button-text="取消" confirm-button-type="danger" @confirm="kickWeb(row.sessionKey)">
               <template #reference>
                 <el-button size="small" type="danger" plain>踢出</el-button>
               </template>
@@ -105,26 +66,17 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
 
-    <!-- 当前 SFTP 连接设备 -->
-    <el-card class="section-card">
-      <template #header>
-        <div style="display:flex; align-items:center; justify-content:space-between;">
-          <span class="card-title">
-            <el-icon><Connection /></el-icon> 当前 SFTP 连接设备
-          </span>
-          <el-tag :type="data.sftpConnections?.length ? 'success' : 'info'">
-            {{ data.sftpConnections?.length || 0 }} 个在线
-          </el-tag>
-        </div>
-      </template>
+      <div class="subsection-divider"></div>
 
-      <el-table
-        :data="data.sftpConnections || []"
-        style="width: 100%"
-        empty-text="暂无 SFTP 连接"
-      >
+      <!-- SFTP 连接设备 -->
+      <div class="subsection-header">
+        <span class="section-title"><el-icon><Connection /></el-icon> 当前 SFTP 连接设备</span>
+        <el-tag :type="data.sftpConnections?.length ? 'success' : 'info'" size="small">
+          {{ data.sftpConnections?.length || 0 }} 个在线
+        </el-tag>
+      </div>
+      <el-table :data="data.sftpConnections || []" style="width:100%" empty-text="暂无 SFTP 连接">
         <el-table-column label="设备 IP" min-width="140">
           <template #default="{ row }">
             <el-tag type="primary" effect="plain">{{ row.ip || '未知' }}</el-tag>
@@ -132,37 +84,24 @@
         </el-table-column>
         <el-table-column label="登录账号" min-width="120">
           <template #default="{ row }">
-            <span v-if="row.username">
-              <el-icon style="vertical-align: -2px;"><User /></el-icon>
-              {{ row.username }}
-            </span>
+            <span v-if="row.username"><el-icon style="vertical-align:-2px"><User /></el-icon> {{ row.username }}</span>
             <el-tag v-else type="warning" size="small">认证中…</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="连接时间" min-width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.connectedAt) }}
-          </template>
+          <template #default="{ row }">{{ formatTime(row.connectedAt) }}</template>
         </el-table-column>
         <el-table-column label="在线时长" min-width="100">
-          <template #default="{ row }">
-            {{ elapsed(row.connectedAt) }}
-          </template>
+          <template #default="{ row }">{{ elapsed(row.connectedAt) }}</template>
         </el-table-column>
         <el-table-column label="连接 ID" min-width="160">
           <template #default="{ row }">
-            <span style="font-family:monospace; font-size:11px; color:#909399;">{{ row.connId }}</span>
+            <span style="font-family:monospace;font-size:11px;color:#909399;">{{ row.connId }}</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="90" fixed="right">
           <template #default="{ row }">
-            <el-popconfirm
-              title="确认踢出该设备连接？"
-              confirm-button-text="踢出"
-              cancel-button-text="取消"
-              confirm-button-type="danger"
-              @confirm="kick(row.connId)"
-            >
+            <el-popconfirm title="确认踢出该设备连接？" confirm-button-text="踢出" cancel-button-text="取消" confirm-button-type="danger" @confirm="kick(row.connId)">
               <template #reference>
                 <el-button size="small" type="danger" plain>踢出</el-button>
               </template>
@@ -170,36 +109,29 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </div>
 
     <!-- SFTP 连接说明 -->
-    <el-card class="section-card">
-      <template #header>
-        <span class="card-title"><el-icon><InfoFilled /></el-icon> SFTP 客户端连接说明</span>
-      </template>
-      <div class="sftp-info" v-if="data.lanAddresses?.length">
-        <el-descriptions :column="1" border size="small">
-          <el-descriptions-item label="主机">{{ data.lanAddresses[0] }}</el-descriptions-item>
-          <el-descriptions-item label="端口">{{ data.sftpPort || 2222 }}</el-descriptions-item>
-          <el-descriptions-item label="协议">SFTP</el-descriptions-item>
-        </el-descriptions>
-        <div class="sftp-cmds">
-          <div class="cmd-label">命令行连接示例：</div>
-          <div
-            v-for="ip in data.lanAddresses"
-            :key="'sftp-' + ip"
-            class="cmd-line"
-          >
-            <code>sftp -P {{ data.sftpPort || 2222 }} &lt;用户名&gt;@{{ ip }}</code>
-            <el-button
-              size="small" text
-              @click="copyUrl(`sftp -P ${data.sftpPort || 2222} <用户名>@${ip}`)"
-            >复制</el-button>
-          </div>
+    <div class="section-block" v-if="data.lanAddresses?.length">
+      <div class="section-title"><el-icon><InfoFilled /></el-icon> SFTP 客户端连接说明</div>
+      <el-descriptions :column="2" border>
+        <el-descriptions-item label="主机地址">
+          <div v-for="ip in data.lanAddresses" :key="ip" style="font-family:monospace;">{{ ip }}</div>
+        </el-descriptions-item>
+        <el-descriptions-item label="SFTP 端口">
+          <el-tag type="primary" effect="plain">{{ data.sftpPort || 2222 }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="用户名">使用 SFTP 账号（见用户管理）</el-descriptions-item>
+        <el-descriptions-item label="连接协议">SFTP / SSH2</el-descriptions-item>
+      </el-descriptions>
+      <div class="sftp-cmds" style="margin-top:14px;">
+        <div class="sftp-cmds-label">命令行连接示例：</div>
+        <div v-for="ip in data.lanAddresses" :key="'sftp-' + ip" class="cmd-line">
+          <code>sftp -P {{ data.sftpPort || 2222 }} &lt;用户名&gt;@{{ ip }}</code>
+          <el-button size="small" text @click="copyUrl(`sftp -P ${data.sftpPort || 2222} <用户名>@${ip}`)">复制</el-button>
         </div>
       </div>
-      <el-empty v-else description="暂无局域网 IP" />
-    </el-card>
+    </div>
   </div>
 </template>
 
@@ -332,7 +264,7 @@ onUnmounted(() => clearInterval(timer))
 .quick-connect {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .page-header {
@@ -344,48 +276,71 @@ onUnmounted(() => clearInterval(timer))
 .page-header h3 {
   margin: 0;
   font-size: 18px;
-  color: #303133;
+  color: #0f172a;
 }
 
-.section-card :deep(.el-card__header) {
-  padding: 12px 16px;
-  background: #fafafa;
+/* 扁平 section 块：一个玻璃面板，内部不再嵌套卡片 */
+.section-block {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(14px);
+  padding: 16px 20px;
 }
 
-.card-title {
+.section-title {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-weight: 600;
   font-size: 14px;
-  color: #303133;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 14px;
+}
+
+.subsection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.subsection-header .section-title {
+  margin-bottom: 0;
+}
+
+.subsection-divider {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.2);
+  margin: 20px -20px;
 }
 
 .address-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 24px;
+  gap: 16px;
 }
 
 .address-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 20px;
-  padding: 16px;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  background: #fff;
-  flex: 1;
-  min-width: 280px;
-  max-width: 420px;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  min-width: 190px;
+  max-width: 220px;
 }
 
 .qr-wrap {
-  flex-shrink: 0;
-  width: 160px;
-  height: 160px;
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
+  width: 150px;
+  height: 150px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -394,8 +349,8 @@ onUnmounted(() => clearInterval(timer))
 }
 
 .qr-img {
-  width: 160px;
-  height: 160px;
+  width: 150px;
+  height: 150px;
   display: block;
 }
 
@@ -410,60 +365,68 @@ onUnmounted(() => clearInterval(timer))
   to   { transform: rotate(360deg); }
 }
 
-.addr-info {
-  flex: 1;
-}
-
 .addr-url {
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 600;
   font-family: monospace;
-  color: #409eff;
+  color: #2563eb;
   word-break: break-all;
-  margin-bottom: 6px;
+  text-align: center;
+  line-height: 1.4;
 }
 
-.addr-tip {
-  font-size: 12px;
-  color: #909399;
-  margin-bottom: 12px;
+/* SFTP 连接说明：紧凑横排 */
+.sftp-info-block {
+  padding: 14px 20px;
 }
 
-.addr-actions {
+.sftp-meta {
   display: flex;
+  align-items: center;
   gap: 8px;
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
-.sftp-info {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+.meta-label {
+  font-weight: 600;
+  color: #94a3b8;
+  margin-right: 4px;
+  font-size: 12px;
+}
+
+.sftp-meta-sep {
+  color: #cbd5e1;
 }
 
 .sftp-cmds {
-  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.cmd-label {
-  font-size: 13px;
-  color: #606266;
-  margin-bottom: 8px;
+.sftp-cmds-label {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 4px;
 }
 
 .cmd-line {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
   padding: 8px 12px;
-  background: #f5f7fa;
-  border-radius: 4px;
+  background: rgba(241, 245, 249, 0.8);
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .cmd-line code {
   flex: 1;
   font-family: monospace;
   font-size: 13px;
-  color: #303133;
+  color: #334155;
 }
 </style>

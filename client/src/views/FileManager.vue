@@ -2,14 +2,15 @@
   <div class="file-manager">
     <!-- Toolbar -->
     <div class="toolbar">
-      <el-breadcrumb separator="/">
+      <el-breadcrumb separator="">
         <el-breadcrumb-item
           v-for="(seg, idx) in filesStore.breadcrumbs"
           :key="idx"
           @click="filesStore.navigateTo(idx)"
           style="cursor: pointer;"
         >
-          {{ seg }}
+          <el-icon v-if="idx === 0" style="vertical-align:-2px;"><HomeFilled /></el-icon>
+          <template v-else><span style="color:#cbd5e1;padding:0 4px;">/</span>{{ seg }}</template>
         </el-breadcrumb-item>
       </el-breadcrumb>
       <div class="toolbar-actions">
@@ -256,7 +257,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
 import {
   Upload, FolderAdd, Refresh, Folder, Document, Download, Edit, Delete,
-  MoreFilled, View, EditPen, Top, Search
+  MoreFilled, View, EditPen, Top, Search, HomeFilled
 } from '@element-plus/icons-vue'
 import { useFilesStore } from '../stores/files.js'
 import { useAuthStore } from '../stores/auth.js'
@@ -633,6 +634,9 @@ async function onFolderDrop(e, targetFolder) {
 
 <style scoped>
 .file-manager {
+  padding: 4px 0;
+}
+.file-manager {
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -703,8 +707,8 @@ async function onFolderDrop(e, targetFolder) {
 
 /* Drag-to-move target highlight */
 :global(.folder-drop-target td) {
-  background: #ecf5ff !important;
-  outline: 2px dashed #409eff;
+  background: rgba(59, 130, 246, 0.12) !important;
+  outline: 2px dashed rgba(59, 130, 246, 0.7);
 }
 :global(.row-dragging td) {
   opacity: 0.4;
@@ -716,8 +720,8 @@ async function onFolderDrop(e, targetFolder) {
   justify-content: center;
   align-items: center;
   padding: 16px;
-  background: #f5f7fa;
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 10px;
   min-height: 200px;
 }
 .preview-image {
@@ -745,9 +749,9 @@ async function onFolderDrop(e, targetFolder) {
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
   font-size: 13px;
   line-height: 1.6;
-  background: #f8f9fa;
+  background: rgba(255, 255, 255, 0.7);
   padding: 16px;
-  border-radius: 6px;
+  border-radius: 10px;
   margin: 0;
 }
 .editor-footer {
@@ -776,14 +780,14 @@ async function onFolderDrop(e, targetFolder) {
 .markdown-body :deep(h1) { font-size: 1.6em; border-bottom: 1px solid #ebeef5; padding-bottom: 6px; }
 .markdown-body :deep(h2) { font-size: 1.3em; border-bottom: 1px solid #ebeef5; padding-bottom: 4px; }
 .markdown-body :deep(code) {
-  background: #f0f0f0;
+  background: rgba(148, 163, 184, 0.2);
   padding: 2px 5px;
   border-radius: 4px;
   font-family: Consolas, monospace;
   font-size: 0.9em;
 }
 .markdown-body :deep(pre) {
-  background: #f6f8fa;
+  background: rgba(255, 255, 255, 0.7);
   padding: 14px;
   border-radius: 6px;
   overflow-x: auto;
