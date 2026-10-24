@@ -64,19 +64,39 @@ ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" bash scripts/build-mac
 2. 将 `Local SFTP.app` 拖入 `/Applications`
 3. 首次打开时会弹出**防火墙授权**提示 → 必须点**允许**，局域网其他设备才能访问
 
+## 首次运行
+
+App 不预置任何账号，首次打开会进入**初始化向导**：
+1. 设置管理员用户名和密码
+2. 选择文件存储目录（只能选用户家目录下的文件夹）
+
+初始化只能在**本机 App 窗口或本机浏览器 `http://localhost:3000`** 中完成。局域网其他设备在初始化完成前访问会被拒绝，以防他人抢先注册管理员。
+
+## 安全说明
+
+- App 窗口启用了 sandbox，只能显示本应用页面；外部链接会用系统浏览器打开
+- 安装包**不包含**任何用户数据、`.env`、主机密钥或日志；这些都在运行时生成在下面的数据目录中
+- JWT 签名密钥在首次运行时随机生成，每台机器各不相同
+- 存储目录不能设为磁盘根、系统目录，也不能与数据目录互相包含
+
+更多内容见 [security.md](security.md)。
+
 ## App 数据目录
 
 App 运行时的数据存储在：
 
 ```
 ~/Library/Application Support/local-sftp/
-├── sftp-root/        # 上传文件存储目录（可在 App 内修改）
-├── data/
-│   ├── users.json    # 用户数据库
-│   └── settings.json # 自定义配置（如修改过存储路径）
-├── host-keys/        # SFTP RSA 主机密钥
-└── logs/             # 运行日志
+├── sftp-root/        # 默认上传文件存储目录（可在「系统状态」页修改）
+├── data/             # ⚠️ 敏感：请勿共享
+│   ├── users.json    # 用户数据库（bcrypt 密码哈希）
+│   ├── settings.json # 自定义配置（如修改过存储路径）
+│   └── jwt-secret    # 自动生成的 JWT 签名密钥
+├── host-keys/        # SFTP 主机私钥（host_rsa，RSA 3072）
+└── logs/             # 运行日志（server.log，含审计记录）
 ```
+
+> **重置 App**：退出 App 后删除 `data/users.json`，再次打开会重新进入初始化向导；删除 `data/jwt-secret` 会使所有已登录会话失效。
 
 在 Finder 中快速打开：**前往** → **前往文件夹** → 粘贴路径：
 ```

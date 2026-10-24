@@ -1,25 +1,22 @@
 <template>
-  <div class="user-manager">
-    <div class="toolbar">
-      <h3>用户管理</h3>
-      <el-button type="primary" @click="showAdd = true">
-        <el-icon><Plus /></el-icon> 新增用户
-      </el-button>
-    </div>
+  <div class="user-manager page-stack">
+    <PageHeading title="用户管理" description="管理团队成员、访问权限与专属文件目录。" eyebrow="访问与权限">
+      <el-button type="primary" :icon="Plus" @click="showAdd = true">新增用户</el-button>
+    </PageHeading>
+    <section class="surface-panel" aria-label="用户列表">
+      <div class="panel-heading"><div><h2>团队成员</h2><p>为每位成员分配合适的访问权限</p></div><el-tag type="info" effect="plain">{{ users.length }} 位成员</el-tag></div>
 
     <el-table :data="users" v-loading="loading" style="width: 100%">
       <el-table-column prop="username" label="用户名" width="160" />
       <el-table-column prop="role" label="角色" width="100">
         <template #default="{ row }">
-          <el-tag :type="row.role === 'admin' ? 'danger' : 'info'" size="small">{{ row.role }}</el-tag>
+          <el-tag :type="row.role === 'admin' ? 'primary' : 'info'" size="small">{{ row.role === 'admin' ? '管理员' : '用户' }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="homeDir" label="主目录" min-width="120" />
       <el-table-column label="权限" min-width="200">
         <template #default="{ row }">
-          <div class="perm-tags">
-            <el-tag v-for="p in row.permissions" :key="p" size="small">{{ p }}</el-tag>
-          </div>
+          <el-tag v-for="p in row.permissions" :key="p" size="small" style="margin-right: 4px;">{{ p }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="状态" width="80">
@@ -30,20 +27,21 @@
       <el-table-column prop="createdAt" label="创建时间" width="180">
         <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="170" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
-          <div class="action-row">
-            <el-button text size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button text size="small" :type="row.enabled ? 'warning' : 'success'" @click="toggleEnabled(row)">{{ row.enabled ? '禁用' : '启用' }}</el-button>
-            <el-popconfirm title="确认删除该用户？" @confirm="handleDelete(row.username)">
-              <template #reference>
-                <el-button text size="small" type="danger">删除</el-button>
-              </template>
-            </el-popconfirm>
-          </div>
+          <el-button text size="small" @click="openEdit(row)">编辑</el-button>
+          <el-button text size="small" :type="row.enabled ? 'warning' : 'success'" @click="toggleEnabled(row)">
+            {{ row.enabled ? '禁用' : '启用' }}
+          </el-button>
+          <el-popconfirm title="确认删除该用户？" @confirm="handleDelete(row.username)">
+            <template #reference>
+              <el-button text size="small" type="danger">删除</el-button>
+            </template>
+          </el-popconfirm>
         </template>
       </el-table-column>
     </el-table>
+    </section>
 
     <!-- Add user dialog -->
     <el-dialog v-model="showAdd" title="新增用户" width="500">
@@ -180,6 +178,7 @@ import { Plus, Folder, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { getUsers, createUser, updateUser, deleteUser } from '../api/users.js'
 import { listFiles } from '../api/files.js'
 import { formatDate } from '../utils/format.js'
+import PageHeading from '../components/PageHeading.vue'
 
 const users = ref([])
 const loading = ref(false)
@@ -332,29 +331,11 @@ async function handleDelete(username) {
 </script>
 
 <style scoped>
-.user-manager {
-  padding: 4px 0;
-}
-.perm-tags {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 4px;
-  overflow: visible;
-}
-.action-row {
-  display: flex;
-  align-items: center;
-  white-space: nowrap;
-}
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
-}
-.toolbar h3 {
-  font-size: 18px;
-  color: #0f172a;
 }
 .dir-input-row {
   display: flex;
@@ -368,12 +349,11 @@ async function handleDelete(username) {
 /* Dir Picker */
 .picker-breadcrumb {
   font-size: 13px;
-  color: #475569;
+  color: #606266;
   margin-bottom: 10px;
   padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.7);
-  border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #f5f7fa;
+  border-radius: 4px;
 }
 .picker-seg {
   cursor: pointer;
@@ -386,9 +366,8 @@ async function handleDelete(username) {
   min-height: 200px;
   max-height: 300px;
   overflow-y: auto;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
 }
 .picker-item {
   display: flex;
@@ -400,10 +379,10 @@ async function handleDelete(username) {
   position: relative;
 }
 .picker-item:hover {
-  background: rgba(59, 130, 246, 0.08);
+  background: #f0f7ff;
 }
 .picker-selected {
-  background: rgba(59, 130, 246, 0.14);
+  background: #ecf5ff;
 }
 .picker-up {
   color: #909399;
@@ -416,15 +395,17 @@ async function handleDelete(username) {
 .picker-item:hover .picker-enter-btn {
   opacity: 1;
 }
+.picker-item:focus-within .picker-enter-btn { opacity: 1; }
+@media (hover: none) { .picker-enter-btn { opacity: 1; } }
 .picker-empty {
   text-align: center;
-  color: #94a3b8;
+  color: #c0c4cc;
   padding: 40px 0;
   font-size: 13px;
 }
 .picker-current {
   margin-top: 10px;
   font-size: 13px;
-  color: #475569;
+  color: #606266;
 }
 </style>

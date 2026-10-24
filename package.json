@@ -1,15 +1,15 @@
 {
   "name": "local-sftp",
-  "version": "1.2.0",
+  "version": "1.1.2",
   "description": "局域网 SFTP 文件传输工具",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
     "build:client": "cd client && npm install && npm run build",
     "build:server-deps": "cd server && npm install --omit=dev",
-    "dist:mac": "npm run build:client && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
-    "dist:mac-arm64": "npm run build:client && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64",
-    "dist:mac-x64": "npm run build:client && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --x64"
+    "dist:mac": "npm run build:client && electron-builder --mac",
+    "dist:mac-arm64": "npm run build:client && electron-builder --mac --arm64",
+    "dist:mac-x64": "npm run build:client && electron-builder --mac --x64"
   },
   "build": {
     "appId": "com.localsftp.app",
@@ -28,9 +28,6 @@
     "files": [
       "electron/**",
       "server/src/**",
-      "server/data/**",
-      "!server/data/users.json",
-      "!server/.env",
       "server/package.json",
       "client/dist/**",
       "!server/node_modules/**",
@@ -69,11 +66,10 @@
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.1",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^1.4.5-lts.1",
+    "multer": "^2.5.0",
     "ssh2": "^1.16.0",
     "winston": "^3.14.2"
   },

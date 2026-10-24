@@ -84,16 +84,36 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
     },
   });
 
   const port = parseInt(process.env.WEB_PORT, 10) || 3000;
+  const appOrigin = `http://localhost:${port}`;
+
+  // 窗口只允许停留在本应用页面；Markdown 预览中的外链等交给系统浏览器打开（仅限 http/https）
+  const openExternalSafe = url => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+  };
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalSafe(url);
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    let origin = null;
+    try { origin = new URL(url).origin; } catch {}
+    if (origin !== appOrigin) {
+      e.preventDefault();
+      openExternalSafe(url);
+    }
+  });
+
   waitForPort(port).then(() => {
-    mainWindow.loadURL(`http://localhost:${port}`);
+    mainWindow.loadURL(appOrigin);
   }).catch(err => {
     console.error('[Electron] waitForPort failed:', err.message);
     // 超时后仍尝试加载，避免窗口空白
-    if (mainWindow) mainWindow.loadURL(`http://localhost:${port}`);
+    if (mainWindow) mainWindow.loadURL(appOrigin);
   });
 
   // 关闭窗口时隐藏（保持后台服务运行），点 Dock 图标可重新打开

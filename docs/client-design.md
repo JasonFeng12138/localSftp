@@ -2,433 +2,203 @@
 
 ## 1. 项目概述
 
-基于 Vue 3 的 Web 文件管理客户端，通过 REST API 连接服务端，提供可视化的文件浏览、上传、下载、在线预览/编辑、用户管理等功能。
+这是一个基于 Vue 3 的 Web 管理客户端，通过 REST API 与服务端通信，提供以下功能：
+- 首次初始化向导
+- 文件浏览、上传、下载、在线预览和编辑
+- 用户管理
+- 系统状态与快速连接
+
+生产环境下由服务端托管静态文件（同源访问），Electron 版直接在窗口中加载该页面。
 
 ## 2. 技术选型
 
 | 组件 | 技术 | 版本 | 说明 |
 |------|------|------|------|
-| 前端框架 | Vue 3 | ^3.5.0 | Composition API + `<script setup>` |
-| 构建工具 | Vite | ^6.0.0 | 极速开发体验 |
-| UI 组件库 | Element Plus | ^2.9.0 | 成熟的 Vue 3 组件库 |
-| HTTP 请求 | Axios | ^1.7.0 | Promise 化 HTTP 客户端 |
-| 路由 | Vue Router | ^4.5.0 | SPA 路由管理 |
-| 状态管理 | Pinia | ^2.3.0 | Vue 3 官方状态管理 |
-| 图标 | @element-plus/icons-vue | ^2.3.0 | Element Plus 图标库 |
-| Markdown 渲染 | marked | ^12.0.0 | 在线预览 Markdown |
+| 前端框架 | Vue 3 | ^3.5 | Composition API + `<script setup>` |
+| 构建工具 | Vite | ^6.4 | 开发服务器 + 构建 |
+| UI 组件库 | Element Plus | ^2.9 | 组件与图标（@element-plus/icons-vue） |
+| HTTP | Axios | ^1.7 | 统一实例与拦截器 |
+| 路由 | Vue Router | ^4.5 | History 模式 |
+| 状态管理 | Pinia | ^2.3 | 认证与文件列表状态 |
+| Markdown | marked + DOMPurify | ^12 / ^3.4 | 渲染后必须经过净化 |
+| 二维码 | qrcode | ^1.5 | 快速连接页的访问地址二维码 |
 
-## 3. 页面结构
-
-```
-┌─────────────────────────────────────────────────────┐
-│  顶部导航栏 (Layout.vue)                              │
-│  [Logo/标题]          [文件管理] [用户管理] [系统状态] [退出] │
-├─────────────────────────────────────────────────────┤
-│  主内容区                                            │
-│                                                      │
-│  ┌───────────────────────────────────────────────┐  │
-│  │ 面包屑: / > docs > images     [过滤] [上传] [新建] [刷新] │
-│  ├───────────────────────────────────────────────┤  │
-│  │ 文件列表（表格）                               │  │
-│  │ 名称       | 大小  | 修改时间  | 操作          │  │
-│  │ 📁 docs     —      2026-04-01  ...            │  │
-│  │ 📄 readme.md 2KB   2026-04-02  [可编辑] ...   │  │
-│  │ 🖼 photo.png 500KB 2026-04-03  [图片]   ...   │  │
-│  └───────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────┘
-```
-
-## 4. 目录结构
+## 3. 目录结构
 
 ```
 client/
 ├── src/
-│   ├── main.js                 # 入口
+│   ├── main.js                 # 入口：注册 Pinia、Router、Element Plus
 │   ├── App.vue                 # 根组件（路由出口）
-│   ├── router/
-│   │   └── index.js            # 路由配置（含导航守卫）
+│   ├── router/index.js         # 路由表 + 导航守卫（初始化检测、登录、管理员）
 │   ├── stores/
-│   │   ├── auth.js             # 认证状态
-│   │   └── files.js            # 文件列表状态
+│   │   ├── auth.js             # Token 与当前用户、权限计算属性
+│   │   └── files.js            # 当前目录、文件列表、面包屑
 │   ├── api/
-│   │   ├── index.js            # Axios 实例 + 拦截器
-│   │   ├── auth.js             # 认证 API
-│   │   ├── files.js            # 文件操作 API
-│   │   ├── users.js            # 用户管理 API
-│   │   └── status.js           # 系统状态 API
+│   │   ├── index.js            # Axios 实例（baseURL /api、30s 超时、401 处理）
+│   │   ├── auth.js             # login / logout
+│   │   ├── files.js            # 文件操作（上传/下载不设超时）
+│   │   ├── users.js            # 用户管理（用户名经 encodeURIComponent 编码）
+│   │   └── status.js           # 状态、连接、设置、初始化
 │   ├── views/
-│   │   ├── Login.vue           # 登录页
-│   │   ├── Layout.vue          # 主布局（侧边导航 + 路由容器）
-│   │   ├── FileManager.vue     # 文件管理页（核心）
-│   │   ├── UserManager.vue     # 用户管理页（管理员）
-│   │   └── ServerStatus.vue    # 系统状态页
-│   └── utils/
-│       └── format.js           # 文件大小/日期/运行时长格式化
+│   │   ├── Setup.vue           # 首次初始化向导
+│   │   ├── Login.vue           # 登录
+│   │   ├── Layout.vue          # 主布局：侧边栏、顶栏、移动端导航、退出登录
+│   │   ├── FileManager.vue     # 文件管理（核心页面）
+│   │   ├── UserManager.vue     # 用户管理（管理员）
+│   │   ├── ServerStatus.vue    # 系统状态 + 修改存储目录（管理员）
+│   │   └── QuickConnect.vue    # 快速连接：二维码、在线连接/会话管理（管理员）
+│   ├── components/
+│   │   └── PageHeading.vue     # 页面标题区
+│   ├── styles/theme.css        # 全局主题变量
+│   └── utils/format.js         # formatSize / formatDate / formatUptime
 ├── index.html
 ├── vite.config.js
 └── package.json
 ```
 
-## 5. 核心功能
+## 4. 路由
 
-### 5.1 登录
+| 路径 | 组件 | 访问条件 |
+|------|------|----------|
+| `/setup` | Setup.vue | 系统未初始化 |
+| `/login` | Login.vue | 公开 |
+| `/` | FileManager.vue | 已登录 |
+| `/users` | UserManager.vue | 管理员 |
+| `/status` | ServerStatus.vue | 已登录 |
+| `/connect` | QuickConnect.vue | 管理员 |
 
-- 用户名 + 密码表单
-- 登录成功后存储 JWT Token 到 localStorage，同时保存 user 信息（username、role、permissions、homeDir）
-- Axios 请求拦截器自动携带 `Authorization: Bearer <token>` 头
-- 响应拦截器：401 → 清除 token 并跳转登录页
+导航守卫（`router.beforeEach`）：
+1. 应用启动后第一次导航时请求一次 `GET /api/setup/status`。如果需要初始化，就跳转到 `/setup`。结果会被缓存，初始化完成后调用 `resetSetupCheck()` 重置。
+2. 访问需要登录的路由但未登录时，跳转到 `/login`。
+3. 访问管理员路由但当前用户不是 admin 时，跳转到 `/`。
 
-### 5.2 文件管理（核心页面）
+> 前端守卫和按钮隐藏只用于改善体验，**真正的权限控制由服务端执行**。即使修改 localStorage 里的 `role`，也无法调用管理员接口。
+
+## 5. 认证流程
+
+- **登录**：调用 `POST /api/auth/login` 后，`auth.setAuth(token, user)` 把 Token 和用户信息存入 localStorage（`sftp_token` / `sftp_user`）。
+- **请求**：Axios 请求拦截器自动附加 `Authorization: Bearer <token>`。
+- **失效**：任何接口返回 401 时（Token 过期、被管理员踢出、用户被禁用或改密），响应拦截器会清除本地状态并跳转到 `/login`。
+- **退出**：`Layout.vue` 的 `handleLogout` 先调用 `POST /api/auth/logout`，让服务端吊销该 Token（请求失败时忽略），再清除本地状态。
+- **权限变化**：用户信息在登录时缓存在本地。管理员修改权限后，服务端立即按新权限执行；前端界面要等重新登录后才会刷新按钮的显示状态。
+
+## 6. 页面功能
+
+### 6.1 初始化向导（Setup.vue）
+
+分为三步：
+1. **管理员账号**：填写用户名和密码。
+2. **文件存储目录**：通过 `/api/setup/dirs` 浏览当前系统用户家目录下的文件夹。也可以输入一个新的文件夹名，提交初始化时由服务端创建该文件夹。
+3. **完成**。
+
+初始化只能在服务端所在机器上，通过 `localhost` 访问完成；从局域网其他设备访问会收到 403。
+
+### 6.2 文件管理（FileManager.vue）
 
 | 功能 | 说明 |
 |------|------|
-| 目录浏览 | 双击文件夹进入，面包屑导航点击回退到任意层级 |
-| 文件名过滤 | 工具栏搜索框，实时过滤当前目录的文件名 |
-| 文件上传 | 工具栏按钮（多文件选择）+ 区域拖拽，两种方式均支持 |
-| 文件下载 | 通过操作菜单或预览弹窗下载 |
-| 新建文件夹 | 弹窗输入名称 |
-| 重命名 | 操作菜单 → 重命名弹窗 |
-| 删除 | 操作菜单 → 확认弹窗后删除（支持递归删除目录） |
-| 拖拽移动 | 将行拖入另一个文件夹实现移动；有写权限时可用 |
-| 移动到上级 | 操作菜单快捷项，将文件/目录移动到父目录 |
-| 在线预览 | 文本（高亮/plain）、Markdown 渲染、图片（jpg/png/gif/webp/svg/bmp）|
-| 在线编辑 | txt/md/json/js/ts/css/html/xml/yaml/yml/sh/env/ini/conf，支持保存覆盖 |
-| 操作菜单 | 每行右侧 `...` 下拉菜单，根据权限和文件类型动态显示项目 |
-| 文件类型徽标 | 名称列右侧 tag 标注「可编辑」「图片」「可预览」，hover 显示支持格式 |
+| 目录浏览 | 双击进入文件夹，点击面包屑可回到任意上级 |
+| 过滤 | 实时过滤当前目录的文件名，切换目录后不清空 |
+| 上传 | 按钮选择多个文件或拖拽到区域；显示进度；同名文件会被覆盖 |
+| 下载 | 通过 Blob 下载 |
+| 新建文件夹 / 重命名 | 弹窗输入；重命名的目标已存在时服务端返回 409 并提示 |
+| 删除 | 二次确认后删除，目录递归删除 |
+| 移动 | 把行拖入其他文件夹，或使用「移动到上级」 |
+| 预览 | 支持文本、`.log`、Markdown 和图片（jpg/jpeg/png/gif/webp/svg/bmp） |
+| 编辑 | 支持 txt/md/json/js/ts/css/html/xml/yaml/yml/sh/env/ini/conf；保存时重新上传覆盖原文件；有未保存内容时关闭弹窗会二次确认 |
+| 权限驱动 UI | 根据 `canWrite` / `canDelete` 显示或隐藏操作按钮；没有写权限时禁止拖拽 |
 
-### 5.3 用户管理（管理员）
+**Markdown 安全**：渲染方式为 `DOMPurify.sanitize(marked.parse(content))`。文件内容来自任何有写权限的用户，不经净化直接用 `v-html` 渲染会造成存储型 XSS，可窃取管理员的 Token。新增任何 `v-html` 时都必须同样经过 DOMPurify 处理。
 
-| 功能 | 说明 |
-|------|------|
-| 用户列表 | 表格展示用户名、角色、权限、主目录、状态 |
-| 新增用户 | 弹窗输入用户名、密码、角色、权限、homeDir |
-| 编辑用户 | 修改密码（可选）、权限、homeDir、启用/禁用 |
-| 删除用户 | 确认后删除（保护当前登录用户不被删除） |
-| 权限联动 | 取消 read 自动去掉 write/delete；选择 admin 角色自动全选权限 |
-| homeDir 选择器 | 内置目录浏览弹窗，可视化选择 homeDir，无需手动输入路径 |
+**图片预览**：图片以 Object URL 加载，关闭弹窗时调用 revoke 释放。
 
-### 5.4 系统状态
+### 6.3 用户管理（UserManager.vue，管理员）
 
-- 主机名、平台、SFTP/Web 端口
-- 当前 SFTP 连接数、运行时长、内存占用
-- 网络接口 IP 列表，每行有「复制 SFTP 命令」按钮（自动填入当前登录用户名）
+- 用户列表、新建、编辑（密码留空表示不修改）、启用/禁用、删除。
+- 权限联动：
+  - 取消 read 时自动取消 write 和 delete。
+  - 选择 admin 角色时自动勾选全部权限。
+  - 服务端会再执行一次相同的规范化。
+- homeDir 选择器：通过 `/api/files` 浏览管理员可见的目录树。
+- 服务端会拒绝以下操作，前端显示返回的错误信息：
+  - 删除自己；
+  - 删除、降级或禁用最后一个管理员；
+  - 非法的用户名或 homeDir。
 
-## 6. 路由设计
+### 6.4 系统状态（ServerStatus.vue）
 
-| 路径 | 组件 | 权限 | 说明 |
-|------|------|------|------|
-| /login | Login.vue | 公开 | 登录页 |
-| / | FileManager.vue | 需认证 | 文件管理（默认页） |
-| /users | UserManager.vue | admin | 用户管理 |
-| /status | ServerStatus.vue | 需认证 | 系统状态 |
+- 所有用户：端口、运行时长、局域网 IP，可一键复制 `sftp -P <port> <用户名>@<ip>`。
+- 管理员额外可见：主机名、平台、内存、SFTP 连接数、存储根目录。
+- 管理员可通过目录浏览器修改存储根目录（`PUT /api/settings`）。服务端会拒绝磁盘根、系统目录，以及与程序数据目录互相包含的路径。
 
-路由守卫：未登录访问受保护路由 → 跳转 `/login`；已登录访问 `/login` → 跳转 `/`；非 admin 访问 `/users` → 跳转 `/`。
+### 6.5 快速连接（QuickConnect.vue，管理员）
 
-## 7. API 交互
+- 每个局域网地址生成访问二维码，可复制访问 URL。
+- 在线 SFTP 连接列表，可踢出（`DELETE /api/connections/:connId`）。
+- 在线 Web 会话列表，按会话 ID 踢出（`DELETE /api/connections/web/:sessionKey`），被踢出的 Token 立即失效。
+- 列表定时自动刷新。
 
-### 7.1 Axios 实例配置
+## 7. 状态管理
 
-- `baseURL`: 开发环境 Vite proxy `/api` → `http://localhost:3000`；生产同源 `/api`
-- 请求拦截器: 自动附加 `Authorization: Bearer <token>`
-- 响应拦截器: 401 → `auth.logout()` + router.push('/login')
-
-### 7.2 主要 API
-
-```
-GET    /api/files?path=/               目录列表
-GET    /api/files/download?path=/a.txt 下载（Blob）
-POST   /api/files/upload               上传（FormData: file + path）
-POST   /api/files/mkdir                创建目录
-DELETE /api/files?path=/a.txt          删除
-PUT    /api/files/rename               重命名/移动 { oldPath, newPath }
-GET    /api/files/stat?path=/a.txt     文件元信息
-GET    /api/users                      用户列表（admin）
-POST   /api/users                      创建用户
-PUT    /api/users/:username            修改用户
-DELETE /api/users/:username            删除用户
-GET    /api/status                     服务器状态
-POST   /api/auth/login                 登录 → { token, user }
-```
-
-## 8. 状态管理
-
-### 8.1 Auth Store (`stores/auth.js`)
+### 7.1 Auth Store（`stores/auth.js`）
 
 ```javascript
 {
   token: string | null,
-  user: { username, role, permissions, homeDir } | null,
+  user: { username, role, permissions, homeDir, createdAt, enabled } | null,
   // computed
-  isLoggedIn: boolean,
-  isAdmin: boolean,
-  canRead: boolean,        // permissions.includes('read')
-  canWrite: boolean,       // permissions.includes('write')
-  canDelete: boolean,      // permissions.includes('delete')
+  isLoggedIn, isAdmin, canRead, canWrite, canDelete
 }
 // actions: setAuth(token, user), logout()
 ```
 
-### 8.2 Files Store (`stores/files.js`)
+### 7.2 Files Store（`stores/files.js`）
 
 ```javascript
 {
-  currentPath: string,       // 当前目录虚拟路径，如 '/docs/images'
-  files: FileItem[],         // 当前目录完整列表（过滤在组件层 computed 完成）
+  currentPath: string,     // 当前虚拟路径，如 '/docs/images'
+  files: FileItem[],       // { name, isDirectory, size, mtime }
   loading: boolean,
-  breadcrumbs: string[],     // 路径段数组，如 ['~', 'docs', 'images']
+  breadcrumbs: string[]    // ['/', 'docs', 'images']
 }
-// actions: loadDir(path), navigateTo(segIndex)
+// actions: loadDir(path), navigateTo(index)
 ```
 
-## 9. UI/UX 设计
+## 8. API 封装
 
-1. **权限驱动 UI** — 上传/新建/重命名/移动/删除按钮会根据 canWrite/canDelete 动态隐藏
-2. **拖拽限制** — 无写权限时 draggable=false，行样式 cursor:default
-3. **面包屑** — 点击任意段快速跳转，始终从虚拟根 `/` 开始
-4. **在线编辑脏检查** — 有未保存内容时关闭弹窗会触发二次确认
-5. **图片预览** — Object URL 形式加载，弹窗关闭时自动 revoke 释放内存
-6. **过滤搜索** — 切换目录后过滤框内容不自动清空，方便跨目录比对
-7. **操作菜单** — `...` 下拉，按文件类型和权限动态显示：预览 / 编辑 / 下载 / 重命名 / 移动到上级 / 删除
+- `baseURL` 为 `/api`。开发时由 Vite 代理到 `http://localhost:3000`，生产时与服务端同源。
+- 默认请求超时 30 秒；上传和下载设置 `timeout: 0`，不限时。
+- URL 中的用户名、会话 ID 等参数都经过 `encodeURIComponent` 编码。
+- 完整接口说明见 [api.md](api.md)。
 
-## 10. 开发与构建
+## 9. 开发与构建
 
 ```bash
-# 开发（局域网可访问）
 cd client
 npm install
-npm run dev        # Vite dev server on :8080, proxy /api → :3000
-
-# 构建
-npm run build      # 输出到 dist/
-
-# 生产部署
-# dist/ 静态文件由 Express 服务端托管，访问 http://<server-ip>:3000
+npm run dev        # Vite 开发服务器 :8080，/api 代理到 :3000
+npm run build      # 输出到 client/dist，由服务端托管
 ```
 
-## 11. Vite 配置
+`vite.config.js`：
 
 ```javascript
-// vite.config.js
-export default {
+export default defineConfig({
+  plugins: [vue()],
   server: {
     port: 8080,
-    host: '0.0.0.0',     // 局域网可访问
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3000',
-        changeOrigin: true
-      }
-    }
+    host: '0.0.0.0',   // 局域网可访问
+    proxy: { '/api': { target: 'http://localhost:3000', changeOrigin: true } }
   }
-}
+})
 ```
 
+> 开发模式下经过代理转发的请求，在服务端看来都来自本机，因此局域网设备通过 `:8080` 也能调用初始化接口。仅在可信网络中使用开发模式，或在开发前先完成初始化。
 
-## 3. 页面结构
+## 10. 安全注意事项（前端）
 
-```
-┌─────────────────────────────────────────────────────┐
-│  顶部导航栏                                          │
-│  [Logo/标题]          [服务状态]  [用户名]  [退出]     │
-├────────────┬────────────────────────────────────────┤
-│  侧边栏     │  主内容区                               │
-│             │                                        │
-│  ● 文件管理  │  ┌─────────────────────────────────┐  │
-│  ● 用户管理  │  │ 路径导航: / > docs > images      │  │
-│  ● 系统状态  │  │ [上传] [新建文件夹] [刷新]        │  │
-│             │  ├─────────────────────────────────┤  │
-│             │  │ 文件列表 (表格)                   │  │
-│             │  │ 名称 | 大小 | 修改时间 | 操作     │  │
-│             │  │ 📁 docs      —    2026-04-01  ...│  │
-│             │  │ 📄 readme.md 2KB  2026-04-02  ...│  │
-│             │  │ 📄 app.zip  50MB  2026-04-03  ...│  │
-│             │  └─────────────────────────────────┘  │
-│             │                                        │
-├────────────┴────────────────────────────────────────┤
-│  底部状态栏: SFTP 端口 2222 | API 端口 3000 | 连接正常 │
-└─────────────────────────────────────────────────────┘
-```
-
-## 4. 目录结构
-
-```
-client/
-├── public/
-│   └── favicon.ico
-├── src/
-│   ├── main.js                 # 入口
-│   ├── App.vue                 # 根组件
-│   ├── router/
-│   │   └── index.js            # 路由配置
-│   ├── stores/
-│   │   ├── auth.js             # 认证状态
-│   │   └── files.js            # 文件列表状态
-│   ├── api/
-│   │   ├── index.js            # Axios 实例 + 拦截器
-│   │   ├── auth.js             # 认证 API
-│   │   ├── files.js            # 文件操作 API
-│   │   ├── users.js            # 用户管理 API
-│   │   └── status.js           # 系统状态 API
-│   ├── views/
-│   │   ├── Login.vue           # 登录页
-│   │   ├── FileManager.vue     # 文件管理页 (核心)
-│   │   ├── UserManager.vue     # 用户管理页
-│   │   └── ServerStatus.vue    # 系统状态页
-│   ├── components/
-│   │   ├── AppHeader.vue       # 顶部导航
-│   │   ├── AppSidebar.vue      # 侧边栏
-│   │   ├── BreadcrumbNav.vue   # 路径面包屑导航
-│   │   ├── FileTable.vue       # 文件列表表格
-│   │   ├── UploadDialog.vue    # 上传对话框
-│   │   └── RenameDialog.vue    # 重命名对话框
-│   └── utils/
-│       ├── format.js           # 文件大小/日期格式化
-│       └── path.js             # 路径工具函数
-├── index.html
-├── vite.config.js
-└── package.json
-```
-
-## 5. 核心功能
-
-### 5.1 登录
-
-- 用户名 + 密码表单
-- 登录成功后存储 JWT Token 到 localStorage
-- Axios 请求拦截器自动携带 Authorization 头
-- Token 过期后自动跳转登录页
-
-### 5.2 文件管理 (核心页面)
-
-| 功能 | 说明 |
-|------|------|
-| 目录浏览 | 点击文件夹进入，面包屑导航回退 |
-| 文件上传 | 按钮上传 + 拖拽上传，支持多文件，显示进度条 |
-| 文件下载 | 点击下载按钮，浏览器直接下载 |
-| 新建文件夹 | 弹窗输入名称，创建子目录 |
-| 重命名 | 弹窗修改文件/目录名称 |
-| 删除 | 确认弹窗后删除，支持递归删除目录 |
-| 文件信息 | 显示名称、大小、修改时间、类型 |
-
-### 5.3 用户管理 (管理员)
-
-- 用户列表 (表格)
-- 新增用户
-- 修改用户 (密码、权限、启用/禁用)
-- 删除用户
-
-### 5.4 系统状态
-
-- 服务器 IP 与端口
-- 当前 SFTP 连接数
-- 磁盘使用情况
-- 在线时长
-
-## 6. 路由设计
-
-| 路径 | 组件 | 权限 | 说明 |
-|------|------|------|------|
-| /login | Login.vue | 公开 | 登录页 |
-| / | FileManager.vue | 需认证 | 文件管理 (默认页) |
-| /users | UserManager.vue | admin | 用户管理 |
-| /status | ServerStatus.vue | 需认证 | 系统状态 |
-
-## 7. API 交互
-
-### 7.1 Axios 实例配置
-
-```javascript
-// baseURL 根据当前环境自动配置
-// 开发环境: http://localhost:3000/api
-// 生产环境: /api (同源部署)
-
-// 请求拦截器: 自动附加 JWT Token
-// 响应拦截器: 401 → 跳转登录页，统一错误提示
-```
-
-### 7.2 API 调用映示例
-
-```javascript
-// 列出目录
-GET /api/files?path=/docs → [{ name, size, mtime, isDirectory }]
-
-// 上传文件
-POST /api/files/upload (FormData: file + path) → { success }
-
-// 下载文件
-GET /api/files/download?path=/docs/a.txt → Blob
-
-// 创建目录
-POST /api/files/mkdir { path: '/docs/new-folder' } → { success }
-
-// 删除
-DELETE /api/files?path=/docs/a.txt → { success }
-
-// 重命名
-PUT /api/files/rename { oldPath, newPath } → { success }
-```
-
-## 8. 状态管理
-
-### 8.1 Auth Store
-
-```javascript
-{
-  token: string | null,
-  user: { username, role, permissions } | null,
-  isLoggedIn: boolean (computed)
-}
-```
-
-### 8.2 Files Store
-
-```javascript
-{
-  currentPath: string,       // 当前目录路径
-  files: FileItem[],         // 当前目录的文件列表
-  loading: boolean,          // 加载状态
-  breadcrumbs: string[]      // 面包屑路径段
-}
-```
-
-## 9. UI/UX 设计要点
-
-1. **响应式布局** — 侧边栏可折叠，适应不同屏幕
-2. **拖拽上传** — 文件拖拽到内容区即可上传
-3. **进度显示** — 上传/下载显示进度条和百分比
-4. **面包屑导航** — 快速跳转任意父级目录
-5. **文件图标** — 根据扩展名显示不同图标
-6. **操作确认** — 删除等危险操作需二次确认
-7. **错误提示** — 统一的 ElMessage 错误/成功提示
-8. **暗色主题** — 基于 Element Plus 主题切换 (可选)
-
-## 10. 开发与构建
-
-```bash
-# 开发
-cd client
-npm install
-npm run dev        # Vite dev server on :5173, proxy /api → :3000
-
-# 构建
-npm run build      # 输出到 dist/
-
-# 生产部署
-# 将 dist/ 静态文件由 Express 服务端托管
-```
-
-## 11. Vite 代理配置
-
-```javascript
-// vite.config.js
-export default {
-  server: {
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3000',
-        changeOrigin: true
-      }
-    }
-  }
-}
-```
+- **不要引入外部脚本或 CDN 资源**。服务端的 CSP 为 `script-src 'self'`、`connect-src 'self'`，外部资源会被浏览器拦截。
+- **v-html 必须经过 DOMPurify 净化**。
+- **Token 保存在 localStorage 中**，一旦发生 XSS 就能被直接读取。因此上面两条防线（不引入外部资源、净化 v-html）必须保持。
+- **新增接口调用时，路径类参数一律放在 query 或 body 中**，路由参数要用 `encodeURIComponent` 编码。
