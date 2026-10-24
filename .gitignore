@@ -16,6 +16,10 @@ server/host-keys/
 # User database — contains bcrypt password hashes
 server/data/users.json
 
+# Auto-generated JWT signing secret / machine-specific settings
+server/data/jwt-secret
+server/data/settings.json
+
 # Runtime logs
 server/logs/
 

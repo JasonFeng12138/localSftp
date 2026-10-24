@@ -1,15 +1,11 @@
 <template>
-  <div class="quick-connect">
-    <div class="page-header">
-      <h3>快速连接</h3>
-      <el-button :loading="loading" text @click="load">
-        <el-icon><RefreshRight /></el-icon>
-        刷新
-      </el-button>
-    </div>
+  <div class="quick-connect page-stack">
+    <PageHeading title="快速连接" description="扫码访问、复制地址，轻松连接同一局域网中的设备。" eyebrow="设备与连接">
+      <el-button :loading="loading" :icon="RefreshRight" @click="load">刷新连接</el-button>
+    </PageHeading>
 
     <!-- 局域网访问地址 -->
-    <el-card class="section-card" v-loading="loading">
+    <el-card class="section-card" shadow="never" v-loading="loading">
       <template #header>
         <span class="card-title"><el-icon><Monitor /></el-icon> 局域网访问地址</span>
       </template>
@@ -48,7 +44,7 @@
     </el-card>
 
     <!-- 当前 Web 登录设备 -->
-    <el-card class="section-card">
+    <el-card class="section-card" shadow="never">
       <template #header>
         <div style="display:flex; align-items:center; justify-content:space-between;">
           <span class="card-title">
@@ -108,7 +104,7 @@
     </el-card>
 
     <!-- 当前 SFTP 连接设备 -->
-    <el-card class="section-card">
+    <el-card class="section-card" shadow="never">
       <template #header>
         <div style="display:flex; align-items:center; justify-content:space-between;">
           <span class="card-title">
@@ -173,7 +169,7 @@
     </el-card>
 
     <!-- SFTP 连接说明 -->
-    <el-card class="section-card">
+    <el-card class="section-card" shadow="never">
       <template #header>
         <span class="card-title"><el-icon><InfoFilled /></el-icon> SFTP 客户端连接说明</span>
       </template>
@@ -212,6 +208,7 @@ import {
   RefreshRight, InfoFilled, Loading
 } from '@element-plus/icons-vue'
 import { getConnections, kickConnection, kickWebSession } from '../api/status.js'
+import PageHeading from '../components/PageHeading.vue'
 
 const data = ref({ lanAddresses: [], sftpConnections: [], webSessions: [], webPort: 3000, sftpPort: 2222 })
 const loading = ref(false)
@@ -332,7 +329,7 @@ onUnmounted(() => clearInterval(timer))
 .quick-connect {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
 }
 
 .page-header {
@@ -348,44 +345,43 @@ onUnmounted(() => clearInterval(timer))
 }
 
 .section-card :deep(.el-card__header) {
-  padding: 12px 16px;
-  background: #fafafa;
+  padding: 20px 24px;
+  background: #fff;
 }
 
 .card-title {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   font-weight: 600;
   font-size: 14px;
-  color: #303133;
+  color: var(--app-text);
 }
+.card-title > .el-icon { color: var(--app-primary); font-size: 18px; }
 
 .address-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 16px;
 }
 
 .address-item {
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 16px;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  background: #fff;
-  flex: 1;
-  min-width: 280px;
-  max-width: 420px;
+  padding: 20px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-background);
+  min-width: 0;
 }
 
 .qr-wrap {
   flex-shrink: 0;
   width: 160px;
   height: 160px;
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -412,20 +408,21 @@ onUnmounted(() => clearInterval(timer))
 
 .addr-info {
   flex: 1;
+  min-width: 0;
 }
 
 .addr-url {
   font-size: 15px;
   font-weight: 600;
   font-family: monospace;
-  color: #409eff;
+  color: var(--app-primary);
   word-break: break-all;
   margin-bottom: 6px;
 }
 
 .addr-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--app-muted);
   margin-bottom: 12px;
 }
 
@@ -455,15 +452,25 @@ onUnmounted(() => clearInterval(timer))
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
-  padding: 8px 12px;
-  background: #f5f7fa;
-  border-radius: 4px;
+  padding: 12px 16px;
+  background: var(--app-background);
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
 }
 
 .cmd-line code {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-family: monospace;
   font-size: 13px;
   color: #303133;
+}
+@media (max-width: 767px) {
+  .quick-connect { gap: 18px; }
+  .section-card :deep(.el-card__header) { padding: 18px; }
+  .address-item { flex-direction: column; text-align: center; padding: 20px 16px; gap: 16px; }
+  .addr-actions { justify-content: center; }
+  .card-title { font-size: 13px; gap: 7px; }
 }
 </style>

@@ -1,32 +1,28 @@
 <template>
-  <div class="server-status">
-    <h3 style="margin-bottom: 16px;">系统状态</h3>
-
-    <el-descriptions :column="2" border v-loading="loading">
-      <el-descriptions-item label="主机名">{{ status.hostname }}</el-descriptions-item>
-      <el-descriptions-item label="平台">{{ status.platform }}</el-descriptions-item>
-      <el-descriptions-item label="SFTP 端口">{{ status.sftpPort }}</el-descriptions-item>
-      <el-descriptions-item label="Web API 端口">{{ status.webPort }}</el-descriptions-item>
-      <el-descriptions-item label="SFTP 连接数">
-        <el-tag type="success">{{ status.sftpConnections }}</el-tag>
-      </el-descriptions-item>
-      <el-descriptions-item label="运行时间">{{ formatUptime(status.uptime || 0) }}</el-descriptions-item>
-      <el-descriptions-item label="内存占用">{{ formatSize(status.memoryUsage || 0) }}</el-descriptions-item>
-      <el-descriptions-item label="文件存储目录" :span="2">
-        <span style="font-family: monospace; word-break: break-all;">{{ status.sftpRoot }}</span>
-        <el-button
-          v-if="auth.user?.permissions?.includes('admin')"
-          text size="small" type="primary"
-          style="margin-left: 12px;"
-          @click="openRootDialog"
-        >修改路径</el-button>
-      </el-descriptions-item>
-    </el-descriptions>
-
-    <h4 style="margin: 24px 0 12px;">网络接口</h4>
-    <el-table :data="status.networkInterfaces || []" style="width: 100%">
+  <div class="server-status page-stack">
+    <PageHeading title="系统状态" description="查看服务运行信息、存储位置与网络接口。" eyebrow="服务概览">
+      <el-button :icon="Refresh" :loading="loading" @click="load">刷新状态</el-button>
+    </PageHeading>
+    <div class="metric-grid" v-loading="loading">
+      <div class="metric-card"><span class="metric-icon"><el-icon><Connection /></el-icon></span><div><span class="metric-label">SFTP 连接</span><strong class="metric-value">{{ status.sftpConnections ?? '—' }}<small>个连接</small></strong></div></div>
+      <div class="metric-card"><span class="metric-icon is-green"><el-icon><Timer /></el-icon></span><div><span class="metric-label">服务运行时间</span><strong class="metric-value uptime-value">{{ formatUptime(status.uptime || 0) }}</strong></div></div>
+      <div class="metric-card"><span class="metric-icon is-amber"><el-icon><Monitor /></el-icon></span><div><span class="metric-label">内存占用</span><strong class="metric-value">{{ formatSize(status.memoryUsage || 0) }}</strong></div></div>
+    </div>
+    <section class="surface-panel" v-loading="loading">
+      <div class="panel-heading"><div><h2>服务信息</h2><p>当前主机与文件存储配置</p></div><el-tag type="info" effect="plain">SFTP / Web API</el-tag></div>
+      <dl class="system-grid">
+        <div><dt>主机名</dt><dd>{{ status.hostname || '—' }}</dd></div>
+        <div><dt>操作平台</dt><dd>{{ status.platform || '—' }}</dd></div>
+        <div><dt>SFTP 端口</dt><dd><code>{{ status.sftpPort || '—' }}</code></dd></div>
+        <div><dt>Web API 端口</dt><dd><code>{{ status.webPort || '—' }}</code></dd></div>
+        <div class="storage-setting"><dt>文件存储目录</dt><dd><code>{{ status.sftpRoot || '—' }}</code><el-button v-if="auth.user?.permissions?.includes('admin')" text size="small" type="primary" @click="openRootDialog">修改路径</el-button></dd></div>
+      </dl>
+    </section>
+    <section class="surface-panel">
+      <div class="panel-heading"><div><h2>网络接口</h2><p>通过以下地址连接到当前主机</p></div><span class="panel-meta">{{ status.networkInterfaces?.length || 0 }} 个接口</span></div>
+    <el-table :data="status.networkInterfaces || []" v-loading="loading" style="width: 100%">
       <el-table-column prop="name" label="接口名称" width="200" />
-      <el-table-column prop="address" label="IP 地址">
+      <el-table-column prop="address" label="IP 地址" min-width="280">
         <template #default="{ row }">
           <el-tag>{{ row.address }}</el-tag>
           <el-button text size="small" style="margin-left: 8px;" @click.stop.prevent="copySftpCmd(row.address)">
@@ -35,6 +31,7 @@
         </template>
       </el-table-column>
     </el-table>
+    </section>
 
     <!-- 修改存储路径对话框 -->
     <el-dialog v-model="rootDialog" title="修改文件存储目录" width="540px" :close-on-click-modal="false">
@@ -67,7 +64,7 @@
             @click="browsePick(dir.path)"
             @dblclick="browseEnter(dir.path)"
           >
-            <span>📂</span>
+            <el-icon><Folder /></el-icon>
             <span>{{ dir.name }}</span>
             <el-tag v-if="newRoot === dir.path" size="small" type="success" style="margin-left: auto;">已选</el-tag>
           </div>
@@ -87,6 +84,17 @@
 </template>
 
 <style scoped>
+.uptime-value { font-size: 18px; line-height: 1.5; }
+.system-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; padding: 6px 24px; }
+.system-grid > div { padding: 20px 0; min-width: 0; border-bottom: 1px solid var(--app-border); }
+.system-grid dt { margin-bottom: 10px; color: var(--app-muted); font-size: 12px; }
+.system-grid dd { margin: 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.system-grid code { font-family: 'Cascadia Code', Consolas, monospace; font-size: 13px; }
+.system-grid .storage-setting { grid-column: 1 / -1; border-bottom: 0; }
+.storage-setting dd { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.storage-setting code { min-width: 0; }
+@media (max-width: 767px) { .system-grid { padding-inline: 18px; gap: 0 16px; } .uptime-value { font-size: 14px; } }
+@media (max-width: 374px) { .system-grid { grid-template-columns: 1fr; } }
 .dir-picker {
   border: 1px solid #e4e7ed;
   border-radius: 6px;
@@ -122,6 +130,8 @@ import { ElMessage } from 'element-plus'
 import { getStatus, updateSettings, getSettingsDirs } from '../api/status.js'
 import { formatSize, formatUptime } from '../utils/format.js'
 import { useAuthStore } from '../stores/auth.js'
+import { Refresh, Connection, Timer, Monitor, Folder } from '@element-plus/icons-vue'
+import PageHeading from '../components/PageHeading.vue'
 
 const status = ref({})
 const loading = ref(false)

@@ -1,34 +1,36 @@
 <template>
-  <div class="file-manager">
+  <div class="file-manager page-stack">
+    <PageHeading title="文件管理" description="集中管理你的文件，让每一次传输都井然有序。" eyebrow="文件工作空间">
+      <el-button v-if="auth.canWrite" :icon="FolderAdd" @click="showMkdir = true">新建文件夹</el-button>
+      <el-button v-if="auth.canWrite" type="primary" :icon="Upload" @click="showUpload = true">上传文件</el-button>
+    </PageHeading>
+    <div class="metric-grid">
+      <div class="metric-card"><span class="metric-icon"><el-icon><Document /></el-icon></span><div><span class="metric-label">当前目录文件</span><strong class="metric-value">{{ directorySummary.files }}<small>个文件</small></strong></div></div>
+      <div class="metric-card"><span class="metric-icon is-amber"><el-icon><Folder /></el-icon></span><div><span class="metric-label">当前目录文件夹</span><strong class="metric-value">{{ directorySummary.folders }}<small>个文件夹</small></strong></div></div>
+      <div class="metric-card"><span class="metric-icon is-green"><el-icon><DocumentChecked /></el-icon></span><div><span class="metric-label">当前目录文件大小</span><strong class="metric-value">{{ formatSize(directorySummary.size) }}</strong></div></div>
+    </div>
+    <section class="surface-panel file-panel" aria-label="文件列表">
     <!-- Toolbar -->
     <div class="toolbar">
       <el-breadcrumb separator="/">
         <el-breadcrumb-item
           v-for="(seg, idx) in filesStore.breadcrumbs"
           :key="idx"
-          @click="filesStore.navigateTo(idx)"
-          style="cursor: pointer;"
         >
-          {{ seg }}
+          <button class="path-segment" @click="filesStore.navigateTo(idx)">{{ idx === 0 ? '全部文件' : seg }}</button>
         </el-breadcrumb-item>
       </el-breadcrumb>
       <div class="toolbar-actions">
         <el-input
           v-model="filterText"
-          placeholder="过滤文件名"
+          placeholder="搜索当前目录文件"
+          aria-label="搜索当前目录文件"
           clearable
-          size="small"
-          style="width: 180px;"
+          class="file-search"
         >
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
-        <el-button v-if="auth.canWrite" type="primary" @click="showUpload = true">
-          <el-icon><Upload /></el-icon> 上传
-        </el-button>
-        <el-button v-if="auth.canWrite" @click="showMkdir = true">
-          <el-icon><FolderAdd /></el-icon> 新建文件夹
-        </el-button>
-        <el-button :icon="Refresh" circle @click="refresh" />
+        <el-button :icon="Refresh" aria-label="刷新文件列表" title="刷新文件列表" @click="refresh" />
       </div>
     </div>
 
@@ -61,9 +63,8 @@
               @dragleave="auth.canWrite && row.isDirectory ? onFolderDragLeave(row) : null"
               @drop.stop.prevent="auth.canWrite && row.isDirectory ? onFolderDrop($event, row) : null"
             >
-              <el-icon v-if="row.isDirectory" color="#e6a23c"><Folder /></el-icon>
-              <el-icon v-else color="#909399"><Document /></el-icon>
-              <span>{{ row.name }}</span>
+              <span class="file-icon" :class="{ 'is-folder': row.isDirectory }"><el-icon v-if="row.isDirectory"><Folder /></el-icon><el-icon v-else><Document /></el-icon></span>
+              <button class="file-label" :disabled="!row.isDirectory && !isPreviewable(row.name)" @click.stop="handleRowDblClick(row)" @dblclick.stop>{{ row.name }}</button>
               <!-- Badge: show supported operations for non-directory files -->
               <el-tooltip v-if="!row.isDirectory && (isPreviewable(row.name) || isEditable(row.name))" placement="top">
                 <template #content>
@@ -100,7 +101,7 @@
         <el-table-column label="操作" width="72" fixed="right" align="center">
           <template #default="{ row }">
             <el-dropdown trigger="click" @command="cmd => handleCommand(cmd, row)" @click.stop>
-              <el-button text size="small" class="action-more-btn" @click.stop>
+              <el-button text size="small" class="action-more-btn" :aria-label="'操作：' + row.name" @click.stop>
                 <el-icon :size="18"><MoreFilled /></el-icon>
               </el-button>
               <template #dropdown>
@@ -141,6 +142,9 @@
         <p>拖拽文件到这里上传</p>
       </div>
     </div>
+
+    <div class="file-list-footer"><span>{{ filterText ? `找到 ${filteredFiles.length} 项，共 ${filesStore.files.length} 项` : `共 ${filesStore.files.length} 项` }}</span><span>{{ auth.canWrite ? '支持拖拽上传 · 点击名称打开' : '只读访问 · 点击名称打开' }}</span></div>
+    </section>
 
     <!-- Upload dialog -->
     <el-dialog v-model="showUpload" title="上传文件" width="500">
@@ -254,15 +258,17 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import {
   Upload, FolderAdd, Refresh, Folder, Document, Download, Edit, Delete,
-  MoreFilled, View, EditPen, Top, Search
+  MoreFilled, View, EditPen, Top, Search, DocumentChecked
 } from '@element-plus/icons-vue'
 import { useFilesStore } from '../stores/files.js'
 import { useAuthStore } from '../stores/auth.js'
 import { uploadFile, downloadFile, deleteFile, renameFile, mkdirApi } from '../api/files.js'
 import api from '../api/index.js'
 import { formatSize, formatDate } from '../utils/format.js'
+import PageHeading from '../components/PageHeading.vue'
 
 marked.setOptions({ breaks: true })
 
@@ -277,6 +283,14 @@ const PREVIEWABLE_EXTS_LABEL = [...EDITABLE_EXTS, ...PREVIEWABLE_ONLY_EXTS, ...I
 
 const filesStore = useFilesStore()
 const auth = useAuthStore()
+const directorySummary = computed(() => filesStore.files.reduce((summary, entry) => {
+  if (entry.isDirectory) summary.folders += 1
+  else {
+    summary.files += 1
+    summary.size += entry.size || 0
+  }
+  return summary
+}, { files: 0, folders: 0, size: 0 }))
 
 // --- Filter ---
 const filterText = ref('')
@@ -317,7 +331,8 @@ const editorLoading = ref(false)
 const editorSaving = ref(false)
 const editorDirty = ref(false)
 const editorIsMarkdown = computed(() => editorRow.value && getExt(editorRow.value.name) === 'md')
-const renderedMarkdown = computed(() => editorIsMarkdown.value ? marked.parse(editorContent.value) : '')
+// Markdown 内容来自任意有写权限的用户，必须消毒后再 v-html，否则管理员预览恶意 .md 即被 XSS 窃取 Token
+const renderedMarkdown = computed(() => editorIsMarkdown.value ? DOMPurify.sanitize(marked.parse(editorContent.value)) : '')
 const editorImageUrl = ref('')
 
 // ===================== Helpers =====================
@@ -460,7 +475,8 @@ async function handleDownload(row) {
     a.href = url
     a.download = row.name
     a.click()
-    URL.revokeObjectURL(url)
+    // 立即 revoke 在部分浏览器中会导致下载被取消，延迟释放
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   } catch {
     ElMessage.error('下载失败')
   }
@@ -633,22 +649,29 @@ async function onFolderDrop(e, targetFolder) {
 
 <style scoped>
 .file-manager {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
+  min-width: 0;
 }
+.file-panel { display: flex; flex-direction: column; }
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--app-border);
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 16px;
 }
+.toolbar .el-breadcrumb { flex: 1; min-width: 0; }
+.path-segment { border: 0; padding: 0; background: transparent; color: var(--app-muted); cursor: pointer; font-size: 13px; }
+.path-segment:hover { color: var(--app-primary); }
+.el-breadcrumb__item:last-child .path-segment { color: var(--app-text); font-weight: 600; }
 .toolbar-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
+.file-search { width: 230px; }
+.file-list-footer { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 16px 24px; color: var(--app-muted); border-top: 1px solid var(--app-border); font-size: 11px; }
 .drop-zone {
   position: relative;
   flex: 1;
@@ -678,6 +701,11 @@ async function onFolderDrop(e, targetFolder) {
   cursor: grab;
   user-select: none;
 }
+.file-icon { display: inline-flex; justify-content: center; align-items: center; width: 34px; height: 38px; flex-shrink: 0; color: var(--app-primary); background: #eff3fc; border-radius: 8px; font-size: 19px; }
+.file-icon.is-folder { background: #fcf6e9; color: #c08e36; }
+.file-label { padding: 4px 0; min-width: 0; border: 0; background: transparent; color: var(--app-text); text-align: left; cursor: pointer; font-size: 13px; overflow-wrap: anywhere; }
+.file-label:hover:not(:disabled) { color: var(--app-primary); }
+.file-label:disabled { cursor: default; }
 .file-name.no-drag {
   cursor: default;
 }
@@ -759,6 +787,15 @@ async function onFolderDrop(e, targetFolder) {
 .editor-footer-right {
   display: flex;
   gap: 8px;
+}
+@media (max-width: 767px) {
+  .toolbar { padding: 16px; }
+  .toolbar .el-breadcrumb { flex-basis: 100%; }
+  .toolbar-actions { width: 100%; }
+  .file-search { width: auto; flex: 1; }
+  .file-list-footer { padding: 14px 16px; }
+  .editor-footer { align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+  .editor-footer-right { flex-wrap: wrap; }
 }
 
 /* Markdown */

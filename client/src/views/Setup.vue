@@ -1,8 +1,9 @@
 <template>
-  <div class="setup-page">
-    <div class="setup-card">
+  <main class="setup-page auth-page">
+    <div class="setup-card auth-card">
       <div class="setup-header">
-        <div class="setup-logo">📁</div>
+        <div class="setup-logo"><span class="brand-icon"><el-icon><Connection /></el-icon></span></div>
+        <div class="auth-eyebrow">开始你的文件工作空间</div>
         <h2>欢迎使用 Local SFTP</h2>
         <p class="setup-subtitle">首次使用，请完成初始化设置</p>
       </div>
@@ -15,7 +16,7 @@
 
       <!-- Step 0: 创建管理员 -->
       <div v-if="step === 0">
-        <el-form ref="adminForm" :model="form" :rules="adminRules" label-width="100px">
+        <el-form ref="adminForm" :model="form" :rules="adminRules" label-position="top">
           <el-form-item label="用户名" prop="username">
             <el-input v-model="form.username" placeholder="请输入管理员用户名" clearable />
           </el-form-item>
@@ -66,7 +67,7 @@
               @click="selectDir(dir.path)"
               @dblclick="enterDir(dir.path)"
             >
-              <span class="dir-icon">📂</span>
+              <el-icon><Folder /></el-icon>
               <span class="dir-name">{{ dir.name }}</span>
               <el-tag v-if="form.sftpRoot === dir.path" size="small" type="success" style="margin-left: auto;">已选</el-tag>
             </div>
@@ -118,11 +119,12 @@
         </el-result>
       </div>
     </div>
-  </div>
+  </main>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { Connection, Folder } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { completeSetup, getSetupDirs } from '../api/status.js'
@@ -297,21 +299,14 @@ onMounted(async () => {
 
 <style scoped>
 .setup-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 24px;
+  padding-block: 40px;
 }
 
 .setup-card {
   background: #fff;
-  border-radius: 12px;
   padding: 40px;
   width: 100%;
-  max-width: 560px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  max-width: 600px;
 }
 
 .setup-header {
@@ -320,18 +315,18 @@ onMounted(async () => {
 }
 
 .setup-logo {
-  font-size: 48px;
-  margin-bottom: 12px;
+  margin-bottom: 20px;
 }
+.setup-logo .brand-icon { width: 48px; height: 48px; color: #fff; background: var(--app-primary); }
 
 .setup-header h2 {
-  margin: 0 0 8px;
+  margin: 14px 0 10px;
   font-size: 24px;
-  color: #1a1a2e;
+  color: var(--app-text);
 }
 
 .setup-subtitle {
-  color: #909399;
+  color: var(--app-muted);
   margin: 0;
 }
 
@@ -339,6 +334,7 @@ onMounted(async () => {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+  flex-wrap: wrap;
   margin-top: 24px;
 }
 
@@ -435,5 +431,14 @@ onMounted(async () => {
 .step-done {
   text-align: center;
   padding: 16px 0;
+}
+@media (max-width: 600px) {
+  .setup-page { padding-block: 24px; }
+  .setup-card { padding: 28px 20px; }
+  .setup-header h2 { font-size: 22px; }
+  .setup-card :deep(.el-step__title) { font-size: 12px; }
+  .step-footer { gap: 8px; }
+  .step-footer .el-button { flex: 1; padding-inline: 12px; }
+  .dir-actions { flex-wrap: wrap; }
 }
 </style>

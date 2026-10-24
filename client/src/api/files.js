@@ -8,10 +8,12 @@ export function fileStat(filePath) {
   return api.get('/files/stat', { params: { path: filePath } })
 }
 
+// 文件传输耗时取决于文件大小，不能沿用全局 30s 超时（timeout: 0 表示不限时）
 export function downloadFile(filePath) {
   return api.get('/files/download', {
     params: { path: filePath },
-    responseType: 'blob'
+    responseType: 'blob',
+    timeout: 0
   })
 }
 
@@ -21,6 +23,7 @@ export function uploadFile(file, dirPath, onProgress) {
   form.append('path', dirPath)
   return api.post('/files/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 0,
     onUploadProgress: onProgress
   })
 }

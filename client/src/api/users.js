@@ -9,9 +9,9 @@ export function createUser(data) {
 }
 
 export function updateUser(username, data) {
-  return api.put(`/users/${username}`, data)
+  return api.put(`/users/${encodeURIComponent(username)}`, data)
 }
 
 export function deleteUser(username) {
-  return api.delete(`/users/${username}`)
+  return api.delete(`/users/${encodeURIComponent(username)}`)
 }

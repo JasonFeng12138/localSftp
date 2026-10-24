@@ -1,17 +1,16 @@
 <template>
-  <div class="user-manager">
-    <div class="toolbar">
-      <h3>用户管理</h3>
-      <el-button type="primary" @click="showAdd = true">
-        <el-icon><Plus /></el-icon> 新增用户
-      </el-button>
-    </div>
+  <div class="user-manager page-stack">
+    <PageHeading title="用户管理" description="管理团队成员、访问权限与专属文件目录。" eyebrow="访问与权限">
+      <el-button type="primary" :icon="Plus" @click="showAdd = true">新增用户</el-button>
+    </PageHeading>
+    <section class="surface-panel" aria-label="用户列表">
+      <div class="panel-heading"><div><h2>团队成员</h2><p>为每位成员分配合适的访问权限</p></div><el-tag type="info" effect="plain">{{ users.length }} 位成员</el-tag></div>
 
     <el-table :data="users" v-loading="loading" style="width: 100%">
       <el-table-column prop="username" label="用户名" width="160" />
       <el-table-column prop="role" label="角色" width="100">
         <template #default="{ row }">
-          <el-tag :type="row.role === 'admin' ? 'danger' : 'info'" size="small">{{ row.role }}</el-tag>
+          <el-tag :type="row.role === 'admin' ? 'primary' : 'info'" size="small">{{ row.role === 'admin' ? '管理员' : '用户' }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="homeDir" label="主目录" min-width="120" />
@@ -42,6 +41,7 @@
         </template>
       </el-table-column>
     </el-table>
+    </section>
 
     <!-- Add user dialog -->
     <el-dialog v-model="showAdd" title="新增用户" width="500">
@@ -178,6 +178,7 @@ import { Plus, Folder, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { getUsers, createUser, updateUser, deleteUser } from '../api/users.js'
 import { listFiles } from '../api/files.js'
 import { formatDate } from '../utils/format.js'
+import PageHeading from '../components/PageHeading.vue'
 
 const users = ref([])
 const loading = ref(false)
@@ -394,6 +395,8 @@ async function handleDelete(username) {
 .picker-item:hover .picker-enter-btn {
   opacity: 1;
 }
+.picker-item:focus-within .picker-enter-btn { opacity: 1; }
+@media (hover: none) { .picker-enter-btn { opacity: 1; } }
 .picker-empty {
   text-align: center;
   color: #c0c4cc;

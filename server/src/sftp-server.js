@@ -2,16 +2,39 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { Server } = require('ssh2');
-const { OPEN_MODE } = require('ssh2').utils.sftp;
+const { OPEN_MODE, STATUS_CODE } = require('ssh2').utils.sftp;
 const logger = require('./logger');
+const loginLimiter = require('./rate-limiter');
+const { PathError } = require('./errors');
+const { paths } = require('./config');
+const { normalizeIp, sameFile } = require('./utils');
 
-const SFTP_STATUS_CODE = {
-  OK: 0,
-  EOF: 1,
-  NO_SUCH_FILE: 2,
-  PERMISSION_DENIED: 3,
-  FAILURE: 4
-};
+const MAX_READ_LENGTH = 256 * 1024; // 单次 READ 上限，防止客户端请求超大 length 耗尽内存
+const READDIR_BATCH = 100;
+
+/** fs 错误 → SFTP 状态码 */
+function statusFor(err) {
+  if (err instanceof PathError) return STATUS_CODE.PERMISSION_DENIED;
+  switch (err && err.code) {
+    case 'ENOENT': return STATUS_CODE.NO_SUCH_FILE;
+    case 'EACCES':
+    case 'EPERM': return STATUS_CODE.PERMISSION_DENIED;
+    default: return STATUS_CODE.FAILURE;
+  }
+}
+
+/** SFTP OPEN 标志 → Node 数值 flags（覆盖 CREAT/TRUNC/EXCL/APPEND 的任意组合） */
+function toFsFlags(pflags) {
+  const { O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_EXCL, O_APPEND } = fs.constants;
+  const read = pflags & OPEN_MODE.READ;
+  const write = pflags & OPEN_MODE.WRITE;
+  let flags = read && write ? O_RDWR : write ? O_WRONLY : O_RDONLY;
+  if (pflags & OPEN_MODE.CREAT) flags |= O_CREAT;
+  if (pflags & OPEN_MODE.TRUNC) flags |= O_TRUNC;
+  if (pflags & OPEN_MODE.EXCL) flags |= O_EXCL;
+  if (pflags & OPEN_MODE.APPEND) flags |= O_APPEND;
+  return flags;
+}
 
 class SftpServer {
   constructor(userManager, fileService, options = {}) {
@@ -20,18 +43,16 @@ class SftpServer {
     this.port = options.port || 2222;
     this.host = options.host || '0.0.0.0';
     this.connections = new Map();
-    this.hostKeyPath = process.env.HOST_KEYS_DIR || path.join(__dirname, '..', 'host-keys');
   }
 
   _ensureHostKey() {
-    if (!fs.existsSync(this.hostKeyPath)) {
-      fs.mkdirSync(this.hostKeyPath, { recursive: true });
-    }
-    const keyFile = path.join(this.hostKeyPath, 'host_rsa');
+    const dir = paths.hostKeysDir;
+    fs.mkdirSync(dir, { recursive: true });
+    const keyFile = path.join(dir, 'host_rsa');
     if (!fs.existsSync(keyFile)) {
       logger.info('Generating RSA host key...');
       const { privateKey } = crypto.generateKeyPairSync('rsa', {
-        modulusLength: 2048,
+        modulusLength: 3072,
         privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
         publicKeyEncoding: { type: 'pkcs1', format: 'pem' }
       });
@@ -44,12 +65,10 @@ class SftpServer {
   start() {
     const hostKey = this._ensureHostKey();
 
-    this.server = new Server({ hostKeys: [hostKey] }, (client) => {
+    this.server = new Server({ hostKeys: [hostKey] }, (client, info) => {
       let authedUser = null;
-      const connId = `conn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      // 获取并规范化客户端 IP（处理 ::ffff: IPv6 映射形式）
-      const rawIp = client._sock?.remoteAddress || 'unknown';
-      const clientIp = rawIp.startsWith('::ffff:') ? rawIp.slice(7) : rawIp;
+      const connId = `conn-${crypto.randomUUID()}`;
+      const clientIp = normalizeIp(info && info.ip) || 'unknown';
       this.connections.set(connId, {
         connId,
         ip: clientIp,
@@ -60,35 +79,35 @@ class SftpServer {
       logger.info(`[${connId}] New SSH connection from ${clientIp}`);
 
       client.on('authentication', (ctx) => {
-        if (ctx.method === 'password') {
-          this.userManager.verifyPassword(ctx.username, ctx.password)
-            .then(user => {
-              if (user) {
-                authedUser = { ...user, homeDir: user.homeDir || '/' };
-                // 更新连接记录中的用户名
-                const conn = this.connections.get(connId);
-                if (conn) conn.username = ctx.username;
-                logger.info(`[${connId}] User "${ctx.username}" authenticated`);
-                ctx.accept();
-              } else {
-                logger.warn(`[${connId}] Auth failed for "${ctx.username}"`);
-                ctx.reject();
-              }
-            })
-            .catch(() => ctx.reject());
-        } else {
-          ctx.reject(['password']);
+        if (ctx.method !== 'password') return ctx.reject(['password']);
+        if (loginLimiter.isBlocked(clientIp, ctx.username)) {
+          logger.warn(`[${connId}] Auth rate-limited for "${ctx.username}" from ${clientIp}`);
+          return ctx.reject();
         }
+        this.userManager.verifyPassword(ctx.username, ctx.password)
+          .then(user => {
+            if (!user) {
+              loginLimiter.fail(clientIp, ctx.username);
+              logger.warn(`[${connId}] Auth failed for "${ctx.username}"`);
+              return ctx.reject();
+            }
+            loginLimiter.succeed(clientIp, ctx.username);
+            authedUser = user;
+            const conn = this.connections.get(connId);
+            if (conn) conn.username = user.username;
+            logger.info(`[${connId}] User "${user.username}" authenticated`);
+            ctx.accept();
+          })
+          .catch(() => ctx.reject());
       });
 
       client.on('ready', () => {
         logger.info(`[${connId}] Client ready`);
-
+        // 只提供 sftp 子系统；shell/exec/端口转发没有监听器，ssh2 会自动拒绝
         client.on('session', (accept) => {
           const session = accept();
           session.on('sftp', (accept) => {
-            const sftp = accept();
-            this._handleSftp(sftp, authedUser, connId);
+            this._handleSftp(accept(), authedUser, connId);
           });
         });
       });
@@ -110,10 +129,19 @@ class SftpServer {
 
   _handleSftp(sftp, user, connId) {
     const fileService = this.fileService;
+    const resolve = (p, opts) => fileService.resolvePath(p, user.homeDir, opts);
+    const canRead = user.permissions.includes('read');
+    const canWrite = user.permissions.includes('write');
+    const canDelete = user.permissions.includes('delete');
+
     // Per-session handle table — prevents cross-connection handle collisions
     const handles = new Map();
     let handleCount = 0;
-    function nextHandle() { return Buffer.from(String(handleCount++)); }
+    function addHandle(entry) {
+      const handle = Buffer.from(String(handleCount++));
+      handles.set(handle.toString(), entry);
+      return handle;
+    }
 
     // Release all open file descriptors when the SFTP session ends
     function cleanupHandles() {
@@ -122,241 +150,150 @@ class SftpServer {
       }
       handles.clear();
     }
-    sftp.on('end',   cleanupHandles);
+    sftp.on('end', cleanupHandles);
     sftp.on('close', cleanupHandles);
 
-    const canRead = user.permissions.includes('read');
-    const canWrite = user.permissions.includes('write');
-    const canDelete = user.permissions.includes('delete');
-
-    sftp.on('OPEN', (reqid, filename, flags, attrs) => {
-      if (!canRead && !canWrite) {
-        return sftp.status(reqid, SFTP_STATUS_CODE.PERMISSION_DENIED);
-      }
-      try {
-        const absPath = fileService.resolvePath(filename, user.homeDir);
-        let fsFlags = 'r';
-        if (flags & OPEN_MODE.WRITE) {
-          if (!canWrite) return sftp.status(reqid, SFTP_STATUS_CODE.PERMISSION_DENIED);
-          if (flags & OPEN_MODE.APPEND) {
-            fsFlags = 'a';
-          } else if (flags & OPEN_MODE.CREAT) {
-            // Create-or-truncate: auto-create parent directories
-            const parentDir = path.dirname(absPath);
-            if (!fs.existsSync(parentDir)) {
-              fs.mkdirSync(parentDir, { recursive: true });
-            }
-            fsFlags = (flags & OPEN_MODE.TRUNC) ? 'w' : 'wx';
-          } else {
-            fsFlags = (flags & OPEN_MODE.TRUNC) ? 'r+' : 'r+';
-            if (flags & OPEN_MODE.TRUNC) {
-              fs.truncateSync(absPath, 0);
-            }
+    /** 所有请求处理器统一兜底：任何同步异常都转换成 SFTP 错误状态，而不是让整个进程崩溃 */
+    function on(event, handler) {
+      sftp.on(event, (reqid, ...args) => {
+        try {
+          handler(reqid, ...args);
+        } catch (err) {
+          if (!(err instanceof PathError) && err.code !== 'ENOENT') {
+            logger.warn(`[${connId}] ${event} error: ${err.message}`);
           }
+          sftp.status(reqid, statusFor(err));
         }
-        const fd = fs.openSync(absPath, fsFlags);
-        const handle = nextHandle();
-        handles.set(handle.toString(), { fd, absPath, flags });
-        sftp.handle(reqid, handle);
-      } catch (err) {
-        logger.error(`[${connId}] OPEN error: ${err.message}`);
-        sftp.status(reqid, SFTP_STATUS_CODE.NO_SUCH_FILE);
-      }
-    });
-
-    sftp.on('READ', (reqid, handle, offset, length) => {
+      });
+    }
+    const deny = reqid => sftp.status(reqid, STATUS_CODE.PERMISSION_DENIED);
+    const ok = reqid => sftp.status(reqid, STATUS_CODE.OK);
+    const fileHandle = handle => {
       const entry = handles.get(handle.toString());
-      if (!entry) return sftp.status(reqid, SFTP_STATUS_CODE.FAILURE);
-      const buf = Buffer.alloc(length);
-      const bytesRead = fs.readSync(entry.fd, buf, 0, length, offset);
-      if (bytesRead === 0) {
-        sftp.status(reqid, SFTP_STATUS_CODE.EOF);
-      } else {
-        sftp.data(reqid, buf.slice(0, bytesRead));
+      if (!entry || entry.fd === undefined) throw new Error('Invalid file handle');
+      return entry;
+    };
+
+    on('OPEN', (reqid, filename, pflags) => {
+      const wantsWrite = pflags & (OPEN_MODE.WRITE | OPEN_MODE.APPEND | OPEN_MODE.CREAT | OPEN_MODE.TRUNC);
+      const wantsRead = (pflags & OPEN_MODE.READ) || !wantsWrite;
+      if ((wantsRead && !canRead) || (wantsWrite && !canWrite)) return deny(reqid);
+
+      const absPath = resolve(filename, { allowHome: false });
+      if (pflags & OPEN_MODE.CREAT) {
+        fs.mkdirSync(path.dirname(absPath), { recursive: true });
       }
+      const fd = fs.openSync(absPath, toFsFlags(pflags));
+      sftp.handle(reqid, addHandle({ fd }));
     });
 
-    sftp.on('WRITE', (reqid, handle, offset, data) => {
-      const entry = handles.get(handle.toString());
-      if (!entry) return sftp.status(reqid, SFTP_STATUS_CODE.FAILURE);
-      try {
-        fs.writeSync(entry.fd, data, 0, data.length, offset);
-        sftp.status(reqid, SFTP_STATUS_CODE.OK);
-      } catch (err) {
-        sftp.status(reqid, SFTP_STATUS_CODE.FAILURE);
-      }
+    on('READ', (reqid, handle, offset, length) => {
+      const { fd } = fileHandle(handle);
+      const buf = Buffer.alloc(Math.min(length, MAX_READ_LENGTH));
+      const bytesRead = fs.readSync(fd, buf, 0, buf.length, offset);
+      if (bytesRead === 0) sftp.status(reqid, STATUS_CODE.EOF);
+      else sftp.data(reqid, buf.subarray(0, bytesRead));
     });
 
-    sftp.on('CLOSE', (reqid, handle) => {
+    on('WRITE', (reqid, handle, offset, data) => {
+      const { fd } = fileHandle(handle);
+      fs.writeSync(fd, data, 0, data.length, offset);
+      ok(reqid);
+    });
+
+    on('CLOSE', (reqid, handle) => {
       const key = handle.toString();
       const entry = handles.get(key);
-      if (entry) {
-        if (entry.fd !== undefined) fs.closeSync(entry.fd);
-        handles.delete(key);
-      }
-      sftp.status(reqid, SFTP_STATUS_CODE.OK);
+      handles.delete(key);
+      if (entry && entry.fd !== undefined) fs.closeSync(entry.fd);
+      ok(reqid);
     });
 
-    sftp.on('STAT', onStat);
-    sftp.on('LSTAT', onStat);
+    const onStat = (reqid, pathStr) => sftp.attrs(reqid, toAttrs(fs.statSync(resolve(pathStr))));
+    on('STAT', onStat);
+    on('LSTAT', onStat);
 
-    function onStat(reqid, pathStr) {
-      try {
-        const absPath = fileService.resolvePath(pathStr, user.homeDir);
-        const stat = fs.statSync(absPath);
-        sftp.attrs(reqid, _toAttrs(stat));
-      } catch {
-        sftp.status(reqid, SFTP_STATUS_CODE.NO_SUCH_FILE);
-      }
-    }
+    on('FSTAT', (reqid, handle) => {
+      sftp.attrs(reqid, toAttrs(fs.fstatSync(fileHandle(handle).fd)));
+    });
 
-    sftp.on('FSTAT', (reqid, handle) => {
+    on('OPENDIR', (reqid, dirPath) => {
+      if (!canRead) return deny(reqid);
+      const virtualDir = toVirtualPath(dirPath);
+      const absPath = resolve(virtualDir);
+      const entries = fs.readdirSync(absPath);
+      sftp.handle(reqid, addHandle({ entries, absPath, virtualDir, pos: -1 }));
+    });
+
+    on('READDIR', (reqid, handle) => {
       const entry = handles.get(handle.toString());
-      if (!entry) return sftp.status(reqid, SFTP_STATUS_CODE.FAILURE);
-      try {
-        const stat = fs.fstatSync(entry.fd);
-        sftp.attrs(reqid, _toAttrs(stat));
-      } catch {
-        sftp.status(reqid, SFTP_STATUS_CODE.FAILURE);
+      if (!entry || !entry.entries) return sftp.status(reqid, STATUS_CODE.FAILURE);
+      if (entry.pos >= entry.entries.length) return sftp.status(reqid, STATUS_CODE.EOF);
+
+      const names = [];
+      if (entry.pos === -1) {
+        const parentAbs = resolve(path.posix.dirname(entry.virtualDir));
+        names.push(nameEntry('.', fs.statSync(entry.absPath)), nameEntry('..', fs.statSync(parentAbs)));
+        entry.pos = 0;
       }
-    });
-
-    sftp.on('OPENDIR', (reqid, dirPath) => {
-      if (!canRead) return sftp.status(reqid, SFTP_STATUS_CODE.PERMISSION_DENIED);
-      try {
-        const normalizedInput = path.posix.normalize((dirPath || '/').trim() || '/');
-        const virtualDir = (normalizedInput === '.' || normalizedInput === '')
-          ? '/'
-          : (normalizedInput.startsWith('/') ? normalizedInput : `/${normalizedInput}`);
-        const absPath = fileService.resolvePath(virtualDir, user.homeDir);
-        const entries = fs.readdirSync(absPath);
-        const handle = nextHandle();
-        handles.set(handle.toString(), { entries, absPath, virtualDir, dirRead: false });
-        sftp.handle(reqid, handle);
-      } catch {
-        sftp.status(reqid, SFTP_STATUS_CODE.NO_SUCH_FILE);
-      }
-    });
-
-    sftp.on('READDIR', (reqid, handle) => {
-      const entry = handles.get(handle.toString());
-      if (!entry || !entry.entries) return sftp.status(reqid, SFTP_STATUS_CODE.FAILURE);
-      if (entry.dirRead) return sftp.status(reqid, SFTP_STATUS_CODE.EOF);
-
-      entry.dirRead = true;
-      const currentStat = fs.statSync(entry.absPath);
-      const parentVirtual = entry.virtualDir === '/'
-        ? '/'
-        : (path.posix.dirname(entry.virtualDir) === '.' ? '/' : path.posix.dirname(entry.virtualDir));
-      const parentAbs = fileService.resolvePath(parentVirtual, user.homeDir);
-      const parentStat = fs.statSync(parentAbs);
-
-      const names = [
-        { filename: '.', longname: _longname('.', currentStat), attrs: _toAttrs(currentStat) },
-        { filename: '..', longname: _longname('..', parentStat), attrs: _toAttrs(parentStat) }
-      ];
-
-      names.push(...entry.entries.map(name => {
+      const batch = entry.entries.slice(entry.pos, entry.pos + READDIR_BATCH);
+      entry.pos += batch.length;
+      for (const name of batch) {
         try {
-          const fullPath = path.join(entry.absPath, name);
-          const stat = fs.statSync(fullPath);
-          return { filename: name, longname: _longname(name, stat), attrs: _toAttrs(stat) };
+          names.push(nameEntry(name, fs.statSync(path.join(entry.absPath, name))));
         } catch {
-          return { filename: name, longname: name, attrs: {} };
+          names.push({ filename: name, longname: name, attrs: {} });
         }
-      }));
+      }
       sftp.name(reqid, names);
     });
 
-    sftp.on('REMOVE', (reqid, filename) => {
-      if (!canDelete) return sftp.status(reqid, SFTP_STATUS_CODE.PERMISSION_DENIED);
-      try {
-        const absPath = fileService.resolvePath(filename, user.homeDir);
-        fs.unlinkSync(absPath);
-        sftp.status(reqid, SFTP_STATUS_CODE.OK);
-      } catch {
-        sftp.status(reqid, SFTP_STATUS_CODE.NO_SUCH_FILE);
-      }
+    on('REMOVE', (reqid, filename) => {
+      if (!canDelete) return deny(reqid);
+      fs.unlinkSync(resolve(filename, { allowHome: false }));
+      ok(reqid);
     });
 
-    sftp.on('RMDIR', (reqid, dirPath) => {
-      if (!canDelete) return sftp.status(reqid, SFTP_STATUS_CODE.PERMISSION_DENIED);
-      try {
-        const absPath = fileService.resolvePath(dirPath, user.homeDir);
-        fs.rmdirSync(absPath);
-        sftp.status(reqid, SFTP_STATUS_CODE.OK);
-      } catch {
-        sftp.status(reqid, SFTP_STATUS_CODE.FAILURE);
-      }
+    on('RMDIR', (reqid, dirPath) => {
+      if (!canDelete) return deny(reqid);
+      fs.rmdirSync(resolve(dirPath, { allowHome: false }));
+      ok(reqid);
     });
 
-    sftp.on('MKDIR', (reqid, dirPath, attrs) => {
-      if (!canWrite) return sftp.status(reqid, SFTP_STATUS_CODE.PERMISSION_DENIED);
-      try {
-        const absPath = fileService.resolvePath(dirPath, user.homeDir);
-        fs.mkdirSync(absPath, { recursive: true });
-        sftp.status(reqid, SFTP_STATUS_CODE.OK);
-      } catch {
-        sftp.status(reqid, SFTP_STATUS_CODE.FAILURE);
-      }
+    on('MKDIR', (reqid, dirPath) => {
+      if (!canWrite) return deny(reqid);
+      fs.mkdirSync(resolve(dirPath, { allowHome: false }), { recursive: true });
+      ok(reqid);
     });
 
-    sftp.on('RENAME', (reqid, oldPath, newPath) => {
-      if (!canWrite) return sftp.status(reqid, SFTP_STATUS_CODE.PERMISSION_DENIED);
-      try {
-        const absOld = fileService.resolvePath(oldPath, user.homeDir);
-        const absNew = fileService.resolvePath(newPath, user.homeDir);
-        fs.renameSync(absOld, absNew);
-        sftp.status(reqid, SFTP_STATUS_CODE.OK);
-      } catch {
-        sftp.status(reqid, SFTP_STATUS_CODE.FAILURE);
-      }
+    on('RENAME', (reqid, oldPath, newPath) => {
+      if (!canWrite) return deny(reqid);
+      const absOld = resolve(oldPath, { allowHome: false });
+      const absNew = resolve(newPath, { allowHome: false });
+      // SFTP v3 语义：目标已存在时 RENAME 失败；同时避免只有 write 权限的用户借改名覆盖（删除）文件
+      if (fs.existsSync(absNew) && !sameFile(absOld, absNew)) return sftp.status(reqid, STATUS_CODE.FAILURE);
+      fs.renameSync(absOld, absNew);
+      ok(reqid);
     });
 
-    // These operations are not supported; return OP_UNSUPPORTED (8) so clients
+    // These operations are not supported; return OP_UNSUPPORTED so clients
     // like FileZilla stop retrying and don't show confusing error dialogs.
-    const OP_UNSUPPORTED = 8;
+    for (const event of ['READLINK', 'SYMLINK', 'EXTENDED']) {
+      sftp.on(event, reqid => sftp.status(reqid, STATUS_CODE.OP_UNSUPPORTED));
+    }
 
-    sftp.on('READLINK', (reqid) => {
-      sftp.status(reqid, OP_UNSUPPORTED);
-    });
-
-    sftp.on('SYMLINK', (reqid) => {
-      sftp.status(reqid, OP_UNSUPPORTED);
-    });
-
-    sftp.on('SETSTAT', (reqid) => {
-      // Accept silently — many clients send SETSTAT after upload to preserve timestamps.
-      // Rejecting with FAILURE causes retry loops; OK is harmless here.
-      sftp.status(reqid, SFTP_STATUS_CODE.OK);
-    });
-
-    sftp.on('FSETSTAT', (reqid) => {
-      sftp.status(reqid, SFTP_STATUS_CODE.OK);
-    });
-
-    // Handle SSH2 extension requests (e.g. statvfs@openssh.com) — return OP_UNSUPPORTED
-    sftp.on('EXTENDED', (reqid) => {
-      sftp.status(reqid, OP_UNSUPPORTED);
-    });
+    // Accept silently — many clients send SETSTAT after upload to preserve timestamps.
+    // Rejecting with FAILURE causes retry loops; OK is harmless here (no chmod/chown is applied).
+    sftp.on('SETSTAT', reqid => ok(reqid));
+    sftp.on('FSETSTAT', reqid => ok(reqid));
 
     sftp.on('REALPATH', (reqid, pathStr) => {
+      // Many SFTP clients expect PWD/REALPATH to return an absolute path.
+      // Map empty and "." to virtual root "/" for chroot-like behavior.
+      const virtualPath = toVirtualPath(pathStr);
       try {
-        // Many SFTP clients expect PWD/REALPATH to return an absolute path.
-        // Map empty and "." to virtual root "/" for chroot-like behavior.
-        const input = (pathStr || '').trim();
-        const normalizedInput = path.posix.normalize(input || '/');
-        const virtualPath = (normalizedInput === '.' || normalizedInput === '')
-          ? '/'
-          : (normalizedInput.startsWith('/') ? normalizedInput : `/${normalizedInput}`);
-
-        const absPath = fileService.resolvePath(virtualPath, user.homeDir);
-        const stat = fs.statSync(absPath);
-        sftp.name(reqid, [{
-          filename: virtualPath,
-          longname: _longname(virtualPath, stat),
-          attrs: _toAttrs(stat)
-        }]);
+        const stat = fs.statSync(resolve(virtualPath));
+        sftp.name(reqid, [{ filename: virtualPath, longname: longname(virtualPath, stat), attrs: toAttrs(stat) }]);
       } catch {
         sftp.name(reqid, [{ filename: '/', longname: '/', attrs: {} }]);
       }
@@ -375,12 +312,17 @@ class SftpServer {
   kickConnection(connId) {
     const conn = this.connections.get(connId);
     if (!conn) return false;
-    try {
-      conn._client.end();
-    } catch {}
+    try { conn._client.end(); } catch {}
     this.connections.delete(connId);
-    logger.info(`[${connId}] Connection kicked by admin`);
+    logger.info(`[${connId}] Connection kicked`);
     return true;
+  }
+
+  /** 断开某用户的全部 SFTP 连接（账号被删除/禁用/改密/调整权限后调用，让新设置立即生效） */
+  kickUser(username) {
+    for (const conn of Array.from(this.connections.values())) {
+      if (conn.username === username) this.kickConnection(conn.connId);
+    }
   }
 
   stop() {
@@ -391,7 +333,14 @@ class SftpServer {
   }
 }
 
-function _toAttrs(stat) {
+/** 规范化客户端传来的路径为以 "/" 开头的虚拟路径 */
+function toVirtualPath(input) {
+  const normalized = path.posix.normalize(String(input || '').trim() || '/');
+  if (normalized === '.' || normalized === '') return '/';
+  return normalized.startsWith('/') ? normalized : `/${normalized}`;
+}
+
+function toAttrs(stat) {
   return {
     mode: stat.mode,
     uid: stat.uid || 0,
@@ -402,7 +351,11 @@ function _toAttrs(stat) {
   };
 }
 
-function _longname(name, stat) {
+function nameEntry(name, stat) {
+  return { filename: name, longname: longname(name, stat), attrs: toAttrs(stat) };
+}
+
+function longname(name, stat) {
   const isDir = stat.isDirectory() ? 'd' : '-';
   const size = String(stat.size).padStart(10);
   const d = stat.mtime;
