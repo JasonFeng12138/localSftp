@@ -61,7 +61,7 @@
               @dragend="auth.canWrite ? onRowDragEnd() : null"
               @dragover.prevent="auth.canWrite && row.isDirectory ? onFolderDragOver($event, row) : null"
               @dragleave="auth.canWrite && row.isDirectory ? onFolderDragLeave(row) : null"
-              @drop.stop.prevent="auth.canWrite && row.isDirectory ? onFolderDrop($event, row) : null"
+              @drop="onRowDrop($event, row)"
             >
               <span class="file-icon" :class="{ 'is-folder': row.isDirectory }"><el-icon v-if="row.isDirectory"><Folder /></el-icon><el-icon v-else><Document /></el-icon></span>
               <button class="file-label" :disabled="!row.isDirectory && !isPreviewable(row.name)" @click.stop="handleRowDblClick(row)" @dblclick.stop>{{ row.name }}</button>
@@ -587,7 +587,11 @@ function onOuterDragOver(e) {
 async function handleDrop(e) {
   isDragging.value = false
   if (e.dataTransfer.types.includes('application/sftp-move')) return
-  const droppedFiles = e.dataTransfer.files
+  if (!auth.canWrite) {
+    ElMessage.warning('没有上传权限')
+    return
+  }
+  const droppedFiles = Array.from(e.dataTransfer.files)
   if (!droppedFiles.length) return
   uploading.value = true
   try {
@@ -626,6 +630,14 @@ function onFolderDragLeave(row) {
   if (dragOverFolderName.value === row.name) {
     dragOverFolderName.value = null
   }
+}
+
+function onRowDrop(e, row) {
+  // OS 文件拖入时让事件冒泡到外层 drop-zone 上传；仅内部拖拽移动才在此处理
+  if (!e.dataTransfer.types.includes('application/sftp-move')) return
+  e.stopPropagation()
+  e.preventDefault()
+  if (auth.canWrite && row.isDirectory) onFolderDrop(e, row)
 }
 
 async function onFolderDrop(e, targetFolder) {
